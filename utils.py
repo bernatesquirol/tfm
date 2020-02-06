@@ -34,15 +34,17 @@ class TwitterClient():
             try:
                 results = self.try_call(lambda: self.twitter.get_user_timeline(screen_name=name, count=200, max_id=next_max_id, tweet_mode='extended'))
             except:
-                #no internet
+                #something went wrong: internet or auth
                 break
             if results:
                 next_max_id = results[-1]['id'] - 1
                 all_tweets+=results
+            else:
+                break
         print('Total tweets: {}'.format(len(all_tweets)))
         return pd.DataFrame(all_tweets)
     
-    def try_call(self,call):
+    def try_call(self, call, deep=1):
         try:
             response = call()
             return response
@@ -50,27 +52,42 @@ class TwitterClient():
             time_to_wait = int(self.twitter.get_lastfunction_header('x-rate-limit-reset')) - int(time.time()) + 1
             print('Rate limit exceded. Waiting {} seconds'.format(time_to_wait))            
             time.sleep(time_to_wait)
-            return self.try_call(call)
+            return self.try_call(call, deep=deep+1)
         except TwythonAuthError as e:
             print('Auth error')
             print(str(e))
+            return
         except TwythonError as e:
-            print('No internet')
-            print(str(e))
+            if deep>=6:
+                return
+            print('No internet. Waiting {} seconds'.format(10))
+            time.sleep(10)
+            return self.try_call(call, deep=deep+1)
 
 def get_retweets(timeline):
-    return timeline[-timeline['retweeted_status'].isnull() & -timeline['retweeted_status'].isnull()]['retweeted_status']
+    if 'retweeted_status' not in timeline.columns:
+        return pd.DataFrame()
+    rts = timeline[-timeline['retweeted_status'].isnull() & -timeline['retweeted_status'].isnull()]['retweeted_status']
+    return pd.DataFrame(list(rts.values), index=rts.index)
 
 
 def get_quoted(timeline):
-    return timeline[-timeline['quoted_status'].isnull()]['quoted_status']
+    if 'quoted_status' not in timeline.columns:
+        return pd.DataFrame()
+    quoted = timeline[-timeline['quoted_status'].isnull()]['quoted_status']
+    return pd.DataFrame(list(quoted.values), index=quoted.index)
 
 def get_retweet_and_quoted(timeline):
     rts = get_retweets(timeline)
     quotes = get_quoted(timeline)
     #if len([i for i in rts.index if i in quoted.index])==0:
         #raise Exception('Retweets th')
-    return rts.append(quotes, verify_integrity=True)
+    final = rts.append(quotes, verify_integrity=True, sort=False)
+    if len(rts)>0:
+        final.loc[rts.index, 'type']='retweet'
+    if len(quotes)>0:
+        final.loc[quotes.index, 'type']='quoted'
+    return final 
 
 def get_retweet_and_quoted_count(timeline, normalize=False):
     value_counts = get_retweet_and_quoted(timeline).apply(lambda x: x['user']['screen_name']).value_counts()
@@ -87,7 +104,7 @@ def outlayer_num(count_series,m=1.5):
 
 
 def relevant_outlayers(count_series,m=1.5):
-    return count_series[count_series>outlayer_num(count_series,m)]
+    return count_series>outlayer_num(count_series,m)
 
 
 
