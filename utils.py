@@ -11,6 +11,17 @@ LIST_ALL_CONGRESS = '1193835814754639872'
 SPAIN_GEOCODE = '39.8952506,-3.4686377505768764,600000km'
 
 
+# # General pandas
+
+def save_dataframe(file, timeline, columns_timestamp = ['created_at']):
+    import json
+    with open(file, 'w') as json_file:
+        for col in columns_timestamp:
+            if col in timeline.columns:
+                timeline[col]=timeline[col].astype(str)  
+        json.dump(timeline.to_dict(), json_file)  
+
+
 # # Twython client class
 
 class TwitterClient():
@@ -47,7 +58,8 @@ class TwitterClient():
                 break
         print('Total tweets: {}'.format(len(all_tweets)))
         timeline_df = pd.DataFrame(all_tweets)
-        timeline_df['created_at']=pd.to_datetime(timeline_df['created_at'])
+        if len(timeline_df)>0:
+            timeline_df['created_at']=pd.to_datetime(timeline_df['created_at'])
         return timeline_df
     def get_likes(self, name):
         all_tweets = []
@@ -66,18 +78,18 @@ class TwitterClient():
             else:
                 break
         print('Total likes: {}'.format(len(all_tweets)))
-        timeline_df = pd.DataFrame(all_tweets)
-        timeline_df['created_at']=pd.to_datetime(timeline_df['created_at'])
-        return timeline_df
+        likes_df = pd.DataFrame(all_tweets)
+        if len(likes_df)>0:
+            likes_df['created_at']=pd.to_datetime(likes_df['created_at'])
+        return likes_df
     #def get_timeline_features(self, name):
-    
     def try_call(self, call, deep=1):
         try:
             response = call()
             return response
         except TwythonRateLimitError as e:
-            time_to_wait = int(self.twitter.get_lastfunction_header('x-rate-limit-reset')) - int(time.time()) + 1
-            print('Rate limit exceded.{}th try. Waiting {} seconds'.format(deep, time_to_wait))            
+            time_to_wait = int(self.twitter.get_lastfunction_header('x-rate-limit-reset')) - int(time.time()) + 10
+            print('Rate limit exceded. {}th try. Waiting {} seconds: {}'.format(deep, time_to_wait, time.strftime('%X', time.localtime(time.time()+time_to_wait))))            
             time.sleep(time_to_wait)
             return self.try_call(call, deep=deep+1)
         except TwythonAuthError as e:
@@ -91,17 +103,33 @@ class TwitterClient():
             time.sleep(10)
             return self.try_call(call, deep=deep+1)
 
+# ## Tweet methods
+
 def get_type_tweet(tweet):
     if 'retweeted_status' in tweet.keys() and not pd.isnull(tweet['retweeted_status']):
         return 'RT'
     elif 'quoted_status' in tweet.keys() and not pd.isnull(tweet['quoted_status']):
-        return 'Reply' #return 'Quoted'
-    elif 'in_reply_to_status_id' in tweet.keys() and (not pd.isnull(tweet['in_reply_to_status_id']) or not pd.isnull(tweet['in_reply_to_user_id'])):
         return 'Quoted'
+    elif 'in_reply_to_status_id' in tweet.keys() and (not pd.isnull(tweet['in_reply_to_status_id']) or not pd.isnull(tweet['in_reply_to_user_id'])):
+        return 'Reply'
     elif len(tweet.entities['user_mentions'])>0:
         return 'Mention'
     else:
         return 'Text'
+
+
+def get_type_tweet_and_user(tweet):
+    type_tweet = get_type_tweet(tweet)
+    user = None
+    if type_tweet == 'RT':
+        user = tweet['retweeted_status']['user']['screen_name']
+    elif type_tweet =='Quoted':
+        user = tweet['quoted_status']['user']['screen_name']
+    elif type_tweet =='Reply':
+        user = tweet['in_reply_to_screen_name']        
+    elif type_tweet == 'Mention':
+        user = tweet.entities['user_mentions'][0]['screen_name']
+    return (type_tweet, user)
 
 
 # ## Timeline df methods
@@ -167,7 +195,7 @@ def get_features_timeline(timeline):
     if timeline['created_at'].dtype=='O':
         timeline_df['created_at']=pd.to_datetime(timeline_df['created_at'])
     features['user'] = user
-    features['f_f'] = timeline.iloc[0].user['followers_count']/timeline.iloc[0].user['friends_count']
+    #features['f_f'] = timeline.iloc[0].user['followers_count']/timeline.iloc[0].user['friends_count']
     features['frequency']= len(timeline) / (timeline['created_at'].max()-timeline['created_at'].min()).days
     timeline['utils-type']=timeline.apply(get_type_tweet, axis=1)
     social_tweets_count = len(timeline[timeline['utils-type']!='Text'])
@@ -179,3 +207,55 @@ def get_features_timeline(timeline):
     sorted_features = sorted([features['reply_sratio'],features['rt_sratio'],features['mention_sratio']],reverse=True)
     features['f_s']=sorted_features[0]/sorted_features[1]
     return features
+
+
+def get_light_timeline(timeline):
+    if len(timeline)==0:
+        return timeline
+    #timeline['created_at']=timeline['created_at'].astype(str)    
+    timeline = timeline.set_index('created_at')
+    type_user = timeline.apply(get_type_tweet_and_user, axis=1)
+    timeline['type']=type_user.apply(lambda x: x[0])
+    timeline['screen_name']=type_user.apply(lambda x: x[1])
+    return timeline[['type','screen_name']]
+
+
+def get_light_likes(likes):
+    #likes['created_at']=likes['created_at'].astype(str)  
+    if len(likes)==0:
+        return likes
+    likes = likes.set_index('created_at')
+    likes['type'] = 'Like'
+    likes['screen_name'] = likes.user.apply(lambda u: u['screen_name'])
+    return likes[['type','screen_name']]
+
+
+def get_light_timeline(timeline):
+    #timeline['created_at']=timeline['created_at'].astype(str) 
+    if len(timeline)==0:
+        return timeline
+    timeline = timeline.set_index('created_at')
+    type_user = timeline.apply(get_type_tweet_and_user, axis=1)
+    timeline['type']=type_user.apply(lambda x: x[0])
+    timeline['screen_name']=type_user.apply(lambda x: x[1])
+    return timeline[['type','screen_name']]
+
+
+
+# +
+# twitter_client = TwitterClient()
+# user = 'elsa_artadi'
+# timeline = twitter_client.get_timeline(user)
+# likes = twitter_client.get_likes(user)
+
+# +
+# len(timeline['created_at'].unique())
+
+# +
+# len(pd.concat([get_light_timeline(timeline),get_light_likes(likes)]))
+
+# +
+# len(timeline)+len(likes)
+# -
+get_light_likes
+
