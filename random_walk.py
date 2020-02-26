@@ -1,10 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
 # %%
-
-# %%
-
-
 import utils
 import importlib
 importlib.reload(utils)
@@ -13,28 +9,17 @@ import numpy as np
 
 
 # %%
-
-
 import pandas as pd
 
 
 # %%
-
-
 SPAIN_GEOCODE = '39.8952506,-3.4686377505768764,600000km'
 
 
-# %%
-
-
-
-
-
+# %% [markdown]
 # Experiment: 1000 tweets sample -> 170 tweets/day -> outlier
 
 # %%
-
-
 def get_df_search():
     all_tweets_call = twitter_client.twitter.search(q='lang:ca OR lang:es', geocode=SPAIN_GEOCODE, result_type='recent', count=100)
     all_tweets = pd.DataFrame((map(lambda t: t['user'], all_tweets_call['statuses'])), columns=['created_at','followers_count','friends_count','favourites_count','statuses_count','screen_name'])
@@ -46,8 +31,6 @@ def get_df_search():
 
 
 # %%
-
-
 # all_df = []
 # for i in range(10):
 #     tweets = twitter_client.twitter.search(q='lang:ca OR lang:es', geocode=SPAIN_GEOCODE, result_type='recent', count=100)
@@ -58,43 +41,31 @@ def get_df_search():
 
 
 # %%
-
-
 # all_tweets = pd.concat(all_df, sort=False)
 
 
 # %%
-
-
 # all_tweets = all_tweets.groupby('screen_name').first()
 
 
 # %%
-
-
 # import pandas as pd
 #df_users = pd.DataFrame((map(lambda t: t['user'], tweets['statuses'])), columns=['created_at','followers_count','friends_count','favourites_count','statuses_count','screen_name'])
 # all_tweets['created_at'] = pd.to_datetime(all_tweets['created_at'],utc=True)
 
 
 # %%
-
-
 # all_tweets['frequency'] = all_tweets['statuses_count'] /  all_tweets['created_at'].apply(lambda x: (pd.Timestamp.utcnow() - x).days)
 # all_tweets['outlier_frequency'] = utils.relevant_outliers(all_tweets['frequency'])
 
 
 # %%
-
-
 # utils.outlier_num(all_tweets['frequency'])
 
-
+# %% [markdown]
 # # Random walk
 
 # %%
-
-
 MIN_FOLLOWERS = 55
 MIN_FOLLOWING = 95
 MIN_ACTIONS = 1000
@@ -102,8 +73,6 @@ MIN_ACTIONS = 1000
 
 
 # %%
-
-
 def get_light_user_data(twitter_client, user, path_file=None):
     timeline = twitter_client.get_timeline(user)
     light_timeline = utils.get_light_timeline(timeline)
@@ -118,8 +87,6 @@ def get_light_user_data(twitter_client, user, path_file=None):
 
 
 # %%
-
-
 def get_light_sample(ids, wrong_id=None):
     import random
     if wrong_id:
@@ -148,15 +115,11 @@ def get_light_sample(ids, wrong_id=None):
 
 
 # %%
-
-
 #get_light_sample([902112076067430403, 944839492233555969])
 #choice -> 0
 
 
 # %%
-
-
 def execute_search():
     all_tweets = get_df_search()
     all_tweets['enough_followers'] = all_tweets['followers_count']>MIN_FOLLOWERS
@@ -174,20 +137,14 @@ def execute_search():
 
 
 # %%
-
-
 import time
 
 
 # %%
-
-
 twitter_client = utils.TwitterClient('cred.txt')
 
 
 # %%
-
-
 for i in range(50):
     print('----> volta', i)
     execute_search()
