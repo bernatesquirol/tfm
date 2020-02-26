@@ -22,6 +22,12 @@ def save_dataframe(file, timeline, columns_timestamp = ['created_at']):
         json.dump(timeline.to_dict(), json_file)  
 
 
+# +
+# dict_keys = {}
+# for i in range(0,len(lines),3):
+#     dict_keys[lines[i].strip(), lines[i+1].strip()]=None
+# -
+
 # # Twython client class
 
 class TwitterClient():
@@ -39,15 +45,15 @@ class TwitterClient():
             self.reset()
     def reset(self):
             self.twitter = Twython(self.APP_KEY, self.APP_SECRET, self.USER_TOKEN, self.USER_SECRET)
-    def get_timeline(self, name):
+    def get_timeline(self, screen_name=None, user_id=None):
         all_tweets = []
         results = []
         next_max_id = None
-        print('Extracting timeline of: @{}'.format(name))
+        print('Extracting timeline of: @{}'.format(screen_name or user_id))
         
         while next_max_id==None or (results!=None and len(results) != 0):
             try:
-                results = self.try_call(lambda: self.twitter.get_user_timeline(screen_name=name, count=200, max_id=next_max_id, tweet_mode='extended'))
+                results = self.try_call(lambda: self.twitter.get_user_timeline(screen_name=screen_name, user_id=user_id, count=200, max_id=next_max_id, tweet_mode='extended'))
             except:
                 #something went wrong: internet or auth
                 break
@@ -61,14 +67,14 @@ class TwitterClient():
         if len(timeline_df)>0:
             timeline_df['created_at']=pd.to_datetime(timeline_df['created_at'])
         return timeline_df
-    def get_likes(self, name):
+    def get_likes(self,  screen_name=None, user_id=None):
         all_tweets = []
         results = []
         next_max_id = None
-        print('Extracting likes of: @{}'.format(name))        
+        print('Extracting likes of: @{}'.format(screen_name or user_id))        
         while next_max_id==None or (results!=None and len(results) != 0):
             try:
-                results = self.try_call(lambda: self.twitter.get_favorites(screen_name=name, count=200, max_id=next_max_id, tweet_mode='extended'))
+                results = self.try_call(lambda: self.twitter.get_favorites(screen_name=screen_name, user_id=user_id, count=200, max_id=next_max_id, tweet_mode='extended'))
             except:
                 #something went wrong: internet or auth
                 break
@@ -82,8 +88,25 @@ class TwitterClient():
         if len(likes_df)>0:
             likes_df['created_at']=pd.to_datetime(likes_df['created_at'])
         return likes_df
-    #def get_timeline_features(self, name):
-    def try_call(self, call, deep=1):
+    
+    def show_users(self, screen_names):
+        dict_user_details = {}
+        for screen_name in screen_names:
+            dict_user_details[screen_name] = self.try_call(lambda: self.twitter.show_user(screen_name=screen_name, include_entities=False))
+        return dict_user_details
+        
+    def get_light_user_data(self, user, path_file=None):
+        timeline = self.get_timeline(user)
+        light_timeline = utils.get_light_timeline(timeline)
+        del timeline
+        likes = self.get_likes(user)
+        light_likes = utils.get_light_likes(likes)
+        del likes
+        concat = pd.concat([light_timeline, light_likes])
+        if path_file:
+            concat.to_pickle(os.path.join(path_file,'{}.pkl'.format(user)))
+        return concat
+    def try_call(self, call, deep=1, throw_errors = False):
         try:
             response = call()
             return response
@@ -95,13 +118,18 @@ class TwitterClient():
         except TwythonAuthError as e:
             print('Auth error')
             print(str(e))
+            if throw_errors:
+                raise
             return
         except TwythonError as e:
             if deep>=6:
                 return
             print('No internet. Waiting {} seconds'.format(10))
-            time.sleep(10)
-            return self.try_call(call, deep=deep+1)
+            print(str(e))
+            if throw_errors:
+                raise
+            #time.sleep(10)
+            return #self.try_call(call, deep=deep+1)
 
 # ## Tweet methods
 
@@ -166,25 +194,14 @@ def get_retweet_and_quoted(timeline):
     return final 
 
 def get_retweet_and_quoted_count(timeline, skip_ones=True):
-    return user_frequency(get_retweet_and_quoted(timeline), skip_ones=skip_ones)
+    return user_frequency(get_retweet_and_quoted(timeline)['user'], skip_ones=skip_ones)
 
 
 def user_frequency(tweets, skip_ones=True):
-    value_counts = tweets.user.apply(lambda x: x['screen_name']).value_counts()
+    value_counts = tweets['screen_name'].value_counts()
     if skip_ones:
         value_counts = value_counts[value_counts>1].copy()
     return value_counts
-
-
-def outlayer_num(count_series,m=1.5):
-    q3=count_series.quantile(q=.75)
-    q1=count_series.quantile(q=.25)
-    #print(medcouple(values),q3+np.exp(3*medcouple(values))*m*(q3-q1))
-    return q3+np.exp(3*stattools.medcouple(count_series))*m*(q3-q1)
-
-
-def relevant_outlayers(count_series,m=1.5):
-    return count_series>outlayer_num(count_series,m)
 
 # create functions to get table 
 # https://academic.oup.com/jcmc/article/22/5/231/4666424
@@ -241,6 +258,56 @@ def get_light_timeline(timeline):
     return timeline[['type','screen_name']]
 
 
+# # Stats utils
+
+import scipy.stats as st
+
+
+def outlier_num(count_series,m=1.5):
+    q3=count_series.quantile(q=.75)
+    q1=count_series.quantile(q=.25)
+    #print(medcouple(values),q3+np.exp(3*medcouple(values))*m*(q3-q1))
+    return q3+np.exp(3*stattools.medcouple(count_series))*m*(q3-q1)
+
+
+def relevant_outliers(count_series,m=1.5):
+    return count_series>outlier_num(count_series,m)
+
+
+def plot_best_args(frequency, dist_name):
+    y = np.concatenate([np.zeros(v)+i+1 for i, v in enumerate(frequency.values)])
+    #first
+    plt.subplot(131)
+    dist = getattr(st, dist_name)
+    plt.hist(y, density=True, alpha=0.5, bins=len(users))
+    args = dist.fit(y, floc=0)
+    x = np.linspace(y.min(), y.max(), 100)
+    plt.plot(x, dist(*args).pdf(x))
+    plt.title("{} fit on data".format(dist_name))
+    
+    #second
+    plt.subplot(132)
+    import statsmodels.distributions
+    ecdf = statsmodels.distributions.ECDF(y)
+    plt.plot(x, ecdf(x), label="Empirical CDF")
+    plt.plot(x, dist(*args).cdf(x),label="{} fit".format(dist_name))
+    plt.title("Cumulative failure intensity")
+    plt.legend()
+    #third
+    plt.subplot(133)
+    from st import probplot
+    probplot(y, dist=dist(*args),plot=plt, fit=True)
+    plt.title("{} QQ-plot".format(dist_name))
+    
+    #plt.show()
+    return args
+
+
+def get_best_args(frequency, dist_name):
+    y = np.concatenate([np.zeros(v)+i+1 for i, v in enumerate(frequency.values)])
+    dist = getattr(st, dist_name)
+    args = dist.fit(y, floc=0)
+    return args
 
 # +
 # twitter_client = TwitterClient()
@@ -257,5 +324,5 @@ def get_light_timeline(timeline):
 # +
 # len(timeline)+len(likes)
 # -
-get_light_likes
+# get_light_likes
 
