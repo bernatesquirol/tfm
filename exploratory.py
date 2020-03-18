@@ -96,14 +96,42 @@ from plotly.offline import download_plotlyjs, init_notebook_mode, plot, iplot
 # %%
 from __future__ import print_function
 from ipywidgets import interact, interactive, fixed, interact_manual
-import ipywidgets as widgets
 
 
 # %%
-def get_features_timeline(actions):
+def get_political_party(user_freq, user=None):
+    top15 = user_freq[:15].index
+    dict_parties = {
+                    'psoe': ['PSOE','GaliciaCnSusana', 'socialistes_cat', 'PSLPSOE','astro_duque','psoedeandalucia','PSOELaRioja', 'PSOE_Zamora'],
+                    'pp':['populares','PopularesHuesca','PPdePalencia','PPRMurcia', 'NNGG_Palos'],
+                    'podemos': ['iunida', 'EnComu_Podem', 'PODEMOS', 'Podem_'],
+                    'maspais':['compromis','MasPais_Es'],
+                    'cc': ['coalicion'],
+                    'cup':['cupnacional'],
+                    'vox_es':['vox_es'],
+                    'ciudadanos':['CiudadanosCs'],
+                    'erc':['Esquerra_ERC','alexvallbal'],
+                    'cdc': ['JuntsXCat','Pdemocratacat'],
+                    'pnv': ['eajpnv'],
+                    'bildu':['ehbildu'],
+                    'upn':['upn_navarra'],
+                    'prc':['prcantabria'],
+                    'bng':['obloque']
+                   }
+    for key, values in dict_parties.items():
+        if np.any(top15.isin(values)):
+            return key
+    return np.nan
+            
+
+
+# %%
+def get_features_timeline(actions, party=False):
     features = {}
     if len(actions)<2: return {}
     users_freq_actions = utils.user_frequency(actions)
+    if party:
+        features['party']=get_political_party(users_freq_actions)
     if len(users_freq_actions)>1:
         features['fit_exp'], features['fit_k'], dummie, features['fit_lambda'] = utils.get_best_args(users_freq_actions, 'exponweib')    
         features['1_2_actions']=users_freq_actions.iloc[0]/users_freq_actions.iloc[1]
@@ -111,10 +139,11 @@ def get_features_timeline(actions):
             features['2_3_actions']=users_freq_actions.iloc[1]/users_freq_actions.iloc[2]        
     timeline = actions[actions['type']!='Like']
     likes = actions[actions['type']=='Like']
-    timeline_len = (timeline['created_at'].max()-timeline['created_at'].min()).days
+    
+    timeline_len = (actions['created_at'].max()-timeline['created_at'].min()).days
     if timeline_len>0:
         features['frequency_timeline']= len(timeline) / timeline_len
-    likes_len = (likes['created_at'].max()-likes['created_at'].min()).days
+    likes_len = (actions['created_at'].max()-likes['created_at'].min()).days
     if likes_len>0:
         features['frequency_like']= len(likes) / likes_len
     social_tweets_count = len(timeline[timeline['type']!='Text'])
@@ -140,13 +169,13 @@ def get_features_timeline(actions):
 
 
 # %%
-def load_users(db,root='./data'):
+def load_users(db,root='./data', party=False):
     import os
     path = os.path.join(root,db)
     list_politicians_dict = {}
     for p in os.listdir(path):
         path_file = os.path.join(path,p)
-        p_dict = get_features_timeline(pd.read_pickle(path_file).reset_index())
+        p_dict = get_features_timeline(pd.read_pickle(path_file).reset_index(), party=party)
         list_politicians_dict[p[:-4]]=p_dict
     activity_profiles = pd.DataFrame(list_politicians_dict).T
     user_profile = ['followers_count','friends_count', 'verified', 'statuses_count','favourites_count']
@@ -155,9 +184,8 @@ def load_users(db,root='./data'):
 
 
 # %%
-import utils
-import importlib 
-importlib.reload(utils)
+def get_screen_names(path):
+    return [name[:-4] for name in os.listdir(path)]
 
 
 # %%
@@ -165,7 +193,7 @@ twitter_client = utils.TwitterClient()
 
 
 # %%
-politicians = load_users('politicians')
+politicians = load_users('politicians', party=True)
 
 
 # %%
@@ -175,163 +203,25 @@ random_friends = load_users('random-friends')
 # %%
 random_followers = load_users('random-followers')
 
+# %%
+journalists = load_users('journalists')
 
 # %% [markdown]
 # # Plot interactive
 
 # %%
-def plot(df, columns_to_plot, column_to_color=None, bins=None):
-    import plotly as py
-    import plotly.graph_objs as go
-    dim = len(columns_to_plot)
-    name_index = 'index'
-    if df.index.name!=None:
-        name_index = df.index.name
-    df_plot = df.reset_index()
-    color = None
-    if column_to_color and column_to_color in df.columns:
-        if column_to_color == 'k-means':
-            kmeans = KMeans(n_clusters=bins)
-            kmeans.fit(df.values)
-            clusters = kmeans.predict(df)
-            df_plot['k-means'] = pd.Series(clusters)
-            color='k-means'
-        elif bins:
-            df_plot[column_to_color+'_bins'] = pd.qcut(df_plot[column_to_color], q=cutting_num, labels=range(cutting_num)).astype(int)
-            color = column_to_color+'_bins'
-        else:
-            color = column_to_color
-    if dim==3:
-        fig = px.scatter_3d(df_plot, 
-                        x=columns_to_plot[0],
-                        y=columns_to_plot[1], 
-                        z=columns_to_plot[2],
-                        color=color,
-                        hover_name=name_index,
-                        hover_data=list(df_plot.columns))
-    else:
-        fig = px.scatter(df_plot, 
-                        x=columns_to_plot[0],
-                        y=columns_to_plot[1],
-                        color=color,
-                        hover_name=name_index,
-                        hover_data=list(df_plot.columns))
-    return fig
-
-
-# %%
-def plot_interactive(df, columns_to_plot, column_to_color=None, bins=None, fig=None):
-    import plotly as py
-    import plotly.graph_objs as go
-    dim = len(columns_to_plot)
-    name_index = 'index'
-    if df.index.name!=None:
-        name_index = df.index.name
-    df_plot = df.reset_index()
-    color = None
-    if column_to_color and column_to_color in df.columns:
-        if column_to_color == 'k-means':
-            kmeans = KMeans(n_clusters=bins)
-            kmeans.fit(df.values)
-            clusters = kmeans.predict(df)
-            df_plot['k-means'] = pd.Series(clusters)
-            color='k-means'
-        elif bins:
-            df_plot[column_to_color+'_bins'] = pd.qcut(df_plot[column_to_color], q=cutting_num, labels=range(cutting_num)).astype(int)
-            color = column_to_color+'_bins'
-        else:
-            color = column_to_color
-    data = dict(
-        x=df_plot[columns_to_plot[0]],
-        y=df_plot[columns_to_plot[1]],
-        mode='markers',
-        text=df_plot[name_index]
-    )
-    
-    if color:
-        try:
-            color_column = df_plot[color].astype(float)
-        except:
-            color_column = df_plot[color].factorize()[0]
-        data['marker']=dict(
-            color=color_column, #set color equal to a variable
-            colorscale='Viridis', # one of plotly colorscales
-            showscale=True
-        )
-        
-    if dim==3:
-        data['type']='scatter3d'
-        data['z']=df_plot[columns_to_plot[1]]
-    if fig:
-        fig.data[0].x = data['x']
-        fig.data[0].y = data['y']        
-        fig.data[0].text = data['text']
-        if 'z' in fig.data[0]:
-            fig.data[0].z = data['z']
-        if color:
-            fig.data[0].marker = data['marker']
-    else:
-        fig = go.FigureWidget(data=[data], layout={})
-        return fig
-    #
-    
-
-
-# %%
-def select_column_widget(df, description='', default=None, none_option=False):
-    if default==None:
-        default = df.columns[0]
-    options = list(df.columns)
-    if none_option:
-        options.insert(0, '--none--')
-        default = '--none--'
-    multiple = widgets.Select(
-        options=options,
-        value=default,
-        rows=len(df.columns)+1,
-        description=description,
-        disabled=False
-    )
-    return multiple
-
-
-# %%
-def create_interactive_viz(df, third_d=False):
-    x_col = select_column_widget(df, 'x')
-    y_col = select_column_widget(df, 'y')
-    color = select_column_widget(df, 'color', None, none_option=True)
-    if third_d:
-        z_col = select_column_widget(df, 'z')
-    def get_cols_to_display():
-        if third_d: 
-            return [x_col.value, y_col.value, z_col.value]
-        return [x_col.value, y_col.value]
-    fig = plot_interactive(df, get_cols_to_display(), color.value)
-    def observer(c):
-        plot_interactive(df, get_cols_to_display(), color.value, fig=fig)
-    x_col.observe(observer, 'value', 'change')
-    y_col.observe(observer, 'value', 'change')
-    color.observe(observer, 'value', 'change')
-    if third_d:
-        z_col.observe(observer, 'value', 'change')
-        display(widgets.HBox([x_col, y_col, z_col, color]))
-    else:
-        display(widgets.HBox([x_col, y_col, color]))
-    return fig
-
-
-# %%
 politicians['type']=0
-random_friends['type']=1
-random_followers['type']=2
-all_users = politicians
+journalists['type']=1
+random_friends['type']=2
+random_followers['type']=3
+all_users = pd.concat([politicians,journalists,random_friends, random_followers], sort=False)
 
 
 # %%
-len(all_users)
 
 
 # %%
+all_users['party']=all_users['party'].fillna('--')
 all_users_no_null = all_users[-all_users.isnull().any(axis=1)]
 
 
@@ -340,18 +230,31 @@ len(all_users_no_null)
 
 
 # %%
-create_interactive_viz(all_users_no_null)
+import utils
+import importlib 
+importlib.reload(utils)
 
+
+# %%
+utils.create_interactive_viz(politicians)
 
 # %% [markdown]
-# # Clustering
+# # Visualization
+
+# %%
+all_users_no_null = politicians[-politicians.isnull().any(axis=1)]
+
+# %%
+plot(all_users_no_null, ['like_tweet_ratio', 'social_ratio', 'rt_sratio'], color_column)
+
 
 # %%
 def get_PCA(df, dim=3, columns=[]):
     pca = PCA(n_components=dim)
     if len(columns) == 0:
         columns = df.columns
-    df_pca = df[columns].copy()
+    scaler = StandardScaler()
+    df_pca = pd.DataFrame(scaler.fit_transform(df[columns].copy()), columns=columns, index=df.index )
     df_final = df.copy()
     columns_pca = ['PCA_{}'.format(i) for i in range(dim)]
     df_final[columns_pca] = pd.DataFrame(pca.fit_transform(df_pca),columns=columns_pca, index=df_pca.index)
@@ -364,7 +267,8 @@ def get_tSNE(df, dim=3, perplexity=50, columns=[]):
     tsne = TSNE(n_components=dim, perplexity=perplexity)
     if len(columns) == 0:
         columns = df.columns
-    df_tsne = df[columns].copy()
+    scaler = StandardScaler()
+    df_tsne = pd.DataFrame(scaler.fit_transform(df[columns].copy()), columns=columns, index=df.index )
     df_final = df.copy()
     columns_tsne = ['tSNE_{}'.format(i) for i in range(dim)]
     df_final[columns_tsne] = pd.DataFrame(tsne.fit_transform(df_tsne),columns=columns_tsne, index=df_tsne.index)
@@ -372,27 +276,61 @@ def get_tSNE(df, dim=3, perplexity=50, columns=[]):
 
 
 # %%
+def get_umap(df, dim=3, perplexity=50, columns=[]):
+    from sklearn.manifold import TSNE #T-Distributed Stochastic Neighbor Embedding
+    tsne = TSNE(n_components=dim, perplexity=perplexity)
+    if len(columns) == 0:
+        columns = df.columns
+    scaler = StandardScaler()
+    df_tsne = pd.DataFrame(scaler.fit_transform(df[columns].copy()), columns=columns, index=df.index )
+    df_final = df.copy()
+    columns_tsne = ['umap_{}'.format(i) for i in range(dim)]
+    df_final[columns_tsne] = pd.DataFrame(tsne.fit_transform(df_tsne),columns=columns_tsne, index=df_tsne.index)
+    return df_final, columns_tsne, tsne
+
+
+# %%
 columns = ['frequency_timeline', 'frequency_like', 'like_tweet_ratio',
-       'social_ratio', 'reply_sratio', 'rt_sratio', 'mention_sratio',
-       'quoted_sratio', '1_2_ratios', 'num_outliers_2']
+       'social_ratio', '1_2_ratios']
 
 
 # %%
-scaler = StandardScaler()
-all_users_no_null_standard = pd.DataFrame(scaler.fit_transform(all_users_no_null), columns=all_users_no_null.columns, index=all_users_no_null.index )
+# all_users_no_null= all_users_no_null[all_users_no_null.index!='ierrejon'].copy()
+len(all_users_no_null)
+
+# %%
+df_pca, columns_pca, pca = get_PCA(all_users_no_null,dim=3, columns=columns)
+df_tsne, columns_tsne, tsne = get_tSNE(df_pca, dim=3, columns=columns)
 
 
 # %%
-df_pca, columns_pca, pca = get_PCA(all_users_no_null_standard, columns=columns)
-df_tsne, columns_tsne, tsne = get_tSNE(df_pca, dim=2, columns=columns)
+df_tsne.columns
+
+# %%
+color_column = 'type'
+#df_tsne = df_tsne[columns+columns_tsne+columns_pca+[color_column]]
+
+# %%
+plot(df_tsne, columns_pca, color_column)
 
 
 # %%
-plot(df_tsne, columns_pca, column_to_color='type')
-
+df_pca_politicians, columns_pca, pca = get_PCA(politicians[-politicians.isnull().any(axis=1)],dim=3, columns=columns)
 
 # %%
-plot(df_tsne, columns_tsne, column_to_color='type')
+columns
+
+# %%
+pca.components_
+
+# %%
+plot(df_pca_politicians, columns_pca, 'party')
+
+# %%
+plot(df_tsne[df_tsne['type']==0], columns_pca, 'party')
+
+# %%
+plot(df_tsne, columns_tsne, column_to_color=color_column)
 
 
 # %%
@@ -406,7 +344,23 @@ rcParams['figure.figsize'] = 15, 8
 
 
 # %%
-politicians[politicians['num_outliers_2']<30]['num_outliers_2'].sample(75).hist(bins='auto', density=True)
+import scipy.stats as st
+
+
+# %%
+def compare_two_distributions(a1, a2, n=1000, prop=0.7):
+    min_len = min(len(a1), len(a2))
+    sample_size = int(prop*min_len)
+    tests = [st.ks_2samp(a1.sample(sample_size).values, a2.sample(sample_size).values) for i in range(n)]
+    return np.mean(np.array(list(map(lambda x: np.array([x.statistic, x.pvalue]), tests))), axis=0)
+
+
+# %%
+def check_prop_two_distributions(a1, a2, n=1000):
+    dict_prop = {}
+    for prop in [0.5, 0.6, 0.7, 0.8, 0.9]:
+        dict_prop[prop]=compare_two_distributions(a1, a2, n, prop)
+    return dict_prop
 
 
 # %%
@@ -415,43 +369,75 @@ def filter_30(df):
 
 
 # %%
-filter_30(politicians)[['fit_exp','fit_k', 'fit_lambda']].describe() #'fit_exp'], features['fit_k'], dummie, features['fit_lambda'
+check_prop_two_distributions(filter_30(politicians)['num_outliers_2'], filter_30(politicians)['num_outliers_2'])
 
 
 # %%
-a = [filter_30(random_friends).sample(300)[['fit_exp','fit_k', 'fit_lambda']].describe() for i in range(100)]
-pd.concat(a).reset_index().groupby('index').mean()
+compare_two_distributions(filter_30(politicians)['num_outliers_2'], filter_30(politicians)['num_outliers_2'], prop=0.7)
 
 
 # %%
-b = [filter_30(random_followers).sample(300)[['fit_exp','fit_k', 'fit_lambda']].describe() for i in range(100)]
-pd.concat(b).reset_index().groupby('index').mean()
+result2 = st.ks_2samp(filter_30(politicians)['num_outliers_2'].sample(150).values, filter_30(politicians)['num_outliers_2'].sample(150).values)
+
+# %%
+
+# %%
+# politicians vs random
+compare_two_distributions(filter_30(politicians)['num_outliers_2'], filter_30(random_friends)['num_outliers_2'], prop=0.8, n=1000)
+
+# %%
+# politicians vs journalists
+compare_two_distributions(filter_30(politicians)['num_outliers_2'], filter_30(journalists)['num_outliers_2'], prop=0.8, n=1000)
+
+# %%
+# politicians vs journalists
+compare_two_distributions(filter_30(random_friends)['num_outliers_2'], filter_30(journalists)['num_outliers_2'], prop=0.8, n=1000)
+
+# %%
+# random vs random
+compare_two_distributions(filter_30(random_friends)['num_outliers_2'], filter_30(random_followers)['num_outliers_2'],  prop=0.8, n=1000)
+
+# %%
+compare_two_distributions(filter_30(politicians)['num_outliers_2'], filter_30(journalists)['num_outliers_2'], prop=0.6, n=10000)
+
+# %%
+import matplotlib.pyplot as plt
+importlib.reload(plt)
 
 
 # %%
-random_friends[random_friends['num_outliers_2']<30]['num_outliers_2'].sample(300).hist(bins='auto', density=True)
+def mean_hist(series, n=1000, prop=0.7, **kwargs):
+    sample_size = int(prop*len(series))
+    mean_hist = [np.sort(series.sample(sample_size).values) for i in range(n)]
+    plt.hist(np.mean(mean_hist, axis=0), density=1, alpha=0.3, **kwargs)
 
 
 # %%
-random_followers[random_followers['num_outliers_2']<30]['num_outliers_2'].sample(300).hist(bins='auto', density=True)
-
-
-# %%
-all_users_no_null[all_users_no_null['num_outliers_2']<30]['num_outliers_2'].sample(300).hist(bins='auto', density=True)
-
-
-# %%
-all_users_no_null[all_users_no_null['num_outliers_2']>15].index
-
+p = mean_hist(filter_30(politicians)['num_outliers_2'], prop=0.5, n=100, label='politicians')
+# j = mean_hist(filter_30(journalists)['num_outliers_2'], prop=0.5, n=100,  label='journalists')
+r1 = mean_hist(filter_30(random_friends)['num_outliers_2'],  prop=0.5, n=100, label='random_friends')
+# r2 = mean_hist(filter_30(random_followers)['num_outliers_2'],  prop=0.5, n=100, label='random_friends')
+plt.legend()#[p, j, r1, r2],['politicians', 'journalists', 'random_friends', 'random_followers'])
+plt.title('Outliers distribution')
 
 # %%
-all_users_no_null['num_outliers_2'].max()
-
+# p = mean_hist(filter_30(politicians)['num_outliers_2'], prop=0.5, n=100, label='politicians')
+j = mean_hist(filter_30(journalists)['num_outliers_2'], prop=0.5, n=100,  label='journalists')
+r1 = mean_hist(filter_30(random_friends)['num_outliers_2'],  prop=0.5, n=100, label='random_friends')
+# r2 = mean_hist(filter_30(random_followers)['num_outliers_2'],  prop=0.5, n=100, label='random_friends')
+plt.legend()#[p, j, r1, r2],['politicians', 'journalists', 'random_friends', 'random_followers'])
+plt.title('Outliers distribution')
 
 # %%
-all_users_no_null[all_users_no_null['num_outliers_2']==72.0].iloc[0]
-
+plt.
 
 # %%
-politicians['num_outliers_1'].hist()
+mean_hist(filter_30(journalists)['num_outliers_2'], prop=0.5, n=100);pass
 
+# %%
+mean_hist(filter_30(random_friends)['num_outliers_2'])
+
+# %%
+mean_hist(filter_30(random_followers)['num_outliers_2'])
+
+# %%

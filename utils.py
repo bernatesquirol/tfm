@@ -88,7 +88,48 @@ class TwitterClient():
         if len(likes_df)>0:
             likes_df['created_at']=pd.to_datetime(likes_df['created_at'])
         return likes_df
-    
+    def get_friends_list(self,  screen_name=None, user_id=None):
+        all_friends = []
+        next_cursor = -1
+        response = None
+        print('Extracting friends of: @{}'.format(screen_name or user_id))        
+        while next_cursor!=0 and (next_cursor==-1 or (response!=None and len(response['users']) != 0)):
+            print(next_cursor, response and len(response['users']), len(all_friends))
+            time.sleep(5)
+            try:
+                response = self.try_call(lambda: self.twitter.get_friends_list(screen_name=screen_name, user_id=user_id, count=200, cursor=next_cursor))
+            except:
+                #something went wrong: internet or auth
+                break
+            if response:
+                next_cursor = response['next_cursor']
+                all_friends+=response['users']
+            else:
+                break
+        print('Total friends: {}'.format(len(all_friends)))
+        friends_df = pd.DataFrame(all_friends)
+        return friends_df
+    def get_followers_list(self,  screen_name=None, user_id=None):
+        all_friends = []
+        next_cursor = -1
+        response = None
+        print('Extracting followers of: @{}'.format(screen_name or user_id))        
+        while next_cursor!=0 and (next_cursor==-1 or (response!=None and len(response['users']) != 0)):
+            print(next_cursor, response and len(response['users']), len(all_friends))
+            time.sleep(5)
+            try:
+                response = self.try_call(lambda: self.twitter.get_followers_list(screen_name=screen_name, user_id=user_id, count=200, cursor=next_cursor))
+            except:
+                #something went wrong: internet or auth
+                break
+            if response:
+                next_cursor = response['next_cursor']
+                all_friends+=response['users']
+            else:
+                break
+        print('Total followers: {}'.format(len(all_friends)))
+        friends_df = pd.DataFrame(all_friends)
+        return friends_df
     def show_users(self, screen_names):
         dict_user_details = {}
         for screen_name in screen_names:
@@ -130,6 +171,8 @@ class TwitterClient():
                 raise
             #time.sleep(10)
             return #self.try_call(call, deep=deep+1)
+
+
 
 # ## Tweet methods
 
@@ -324,5 +367,145 @@ def get_best_args(frequency, dist_name):
 # +
 # len(timeline)+len(likes)
 # -
-# get_light_likes
+# # Visualization
 
+
+import ipywidgets as widgets
+
+
+def plot(df, columns_to_plot, column_to_color=None, bins=None):
+    import plotly as py
+    import plotly.graph_objs as go
+    import plotly.express as px
+    dim = len(columns_to_plot)
+    name_index = 'index'
+    if df.index.name!=None:
+        name_index = df.index.name
+    df_plot = df.reset_index()
+    color = None
+    if column_to_color and column_to_color in df.columns:
+        if column_to_color == 'k-means':
+            kmeans = KMeans(n_clusters=bins)
+            kmeans.fit(df.values)
+            clusters = kmeans.predict(df)
+            df_plot['k-means'] = pd.Series(clusters)
+            color='k-means'
+        elif bins:
+            df_plot[column_to_color+'_bins'] = pd.qcut(df_plot[column_to_color], q=cutting_num, labels=range(cutting_num)).astype(int)
+            color = column_to_color+'_bins'
+        else:
+            color = column_to_color
+    if dim==3:
+        fig = px.scatter_3d(df_plot, 
+                        x=columns_to_plot[0],
+                        y=columns_to_plot[1], 
+                        z=columns_to_plot[2],
+                        color=color,
+                        hover_name=name_index,
+                        hover_data=list(df_plot.columns))
+    else:
+        fig = px.scatter(df_plot, 
+                        x=columns_to_plot[0],
+                        y=columns_to_plot[1],
+                        color=color,
+                        hover_name=name_index,
+                        hover_data=list(df_plot.columns))
+    return fig
+
+
+def plot_interactive(df, columns_to_plot, column_to_color=None, bins=None, fig=None):
+    import plotly as py
+    import plotly.graph_objs as go
+    dim = len(columns_to_plot)
+    name_index = 'index'
+    if df.index.name!=None:
+        name_index = df.index.name
+    df_plot = df.reset_index()
+    color = None
+    if column_to_color and column_to_color in df.columns:
+        if column_to_color == 'k-means':
+            kmeans = KMeans(n_clusters=bins)
+            kmeans.fit(df.values)
+            clusters = kmeans.predict(df)
+            df_plot['k-means'] = pd.Series(clusters)
+            color='k-means'
+        elif bins:
+            df_plot[column_to_color+'_bins'] = pd.qcut(df_plot[column_to_color], q=cutting_num, labels=range(cutting_num)).astype(int)
+            color = column_to_color+'_bins'
+        else:
+            color = column_to_color
+    data = dict(
+        x=df_plot[columns_to_plot[0]],
+        y=df_plot[columns_to_plot[1]],
+        mode='markers',
+        text=df_plot[name_index]
+    )
+    
+    if color:
+        try:
+            color_column = df_plot[color].astype(float)
+        except:
+            color_column = df_plot[color].factorize()[0]
+        data['marker']=dict(
+            color=color_column, #set color equal to a variable
+            colorscale='Viridis', # one of plotly colorscales
+            showscale=True
+        )
+        
+    if dim==3:
+        data['type']='scatter3d'
+        data['z']=df_plot[columns_to_plot[1]]
+    if fig:
+        fig.data[0].x = data['x']
+        fig.data[0].y = data['y']        
+        fig.data[0].text = data['text']
+        if 'z' in fig.data[0]:
+            fig.data[0].z = data['z']
+        if color:
+            fig.data[0].marker = data['marker']
+    else:
+        fig = go.FigureWidget(data=[data], layout={})
+        return fig
+    #
+
+
+def select_column_widget(df, description='', default=None, none_option=False):
+    if default==None:
+        default = df.columns[0]
+    options = list(df.columns)
+    if none_option:
+        options.insert(0, '--none--')
+        default = '--none--'
+    multiple = widgets.Select(
+        options=options,
+        value=default,
+        rows=len(df.columns)+1,
+        description=description,
+        disabled=False
+    )
+    return multiple
+
+
+def create_interactive_viz(df, third_d=False):
+    
+    x_col = select_column_widget(df, 'x')
+    y_col = select_column_widget(df, 'y')
+    color = select_column_widget(df, 'color', None, none_option=True)
+    if third_d:
+        z_col = select_column_widget(df, 'z')
+    def get_cols_to_display():
+        if third_d: 
+            return [x_col.value, y_col.value, z_col.value]
+        return [x_col.value, y_col.value]
+    fig = plot_interactive(df, get_cols_to_display(), color.value)
+    def observer(c):
+        plot_interactive(df, get_cols_to_display(), color.value, fig=fig)
+    x_col.observe(observer, 'value', 'change')
+    y_col.observe(observer, 'value', 'change')
+    color.observe(observer, 'value', 'change')
+    if third_d:
+        z_col.observe(observer, 'value', 'change')
+        display(widgets.HBox([x_col, y_col, z_col, color]))
+    else:
+        display(widgets.HBox([x_col, y_col, color]))
+    return fig
