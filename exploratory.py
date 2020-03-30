@@ -184,6 +184,8 @@ def load_users(db,root='./data', party=False):
 
 
 # %%
+
+# %%
 def get_screen_names(path):
     return [name[:-4] for name in os.listdir(path)]
 
@@ -346,28 +348,6 @@ rcParams['figure.figsize'] = 15, 8
 # %%
 import scipy.stats as st
 
-
-# %%
-def compare_two_distributions(a1, a2, n=1000, prop=0.7):
-    min_len = min(len(a1), len(a2))
-    sample_size = int(prop*min_len)
-    tests = [st.ks_2samp(a1.sample(sample_size).values, a2.sample(sample_size).values) for i in range(n)]
-    return np.mean(np.array(list(map(lambda x: np.array([x.statistic, x.pvalue]), tests))), axis=0)
-
-
-# %%
-def check_prop_two_distributions(a1, a2, n=1000):
-    dict_prop = {}
-    for prop in [0.5, 0.6, 0.7, 0.8, 0.9]:
-        dict_prop[prop]=compare_two_distributions(a1, a2, n, prop)
-    return dict_prop
-
-
-# %%
-def filter_30(df):
-    return df[df['num_outliers_2']<30]
-
-
 # %%
 check_prop_two_distributions(filter_30(politicians)['num_outliers_2'], filter_30(politicians)['num_outliers_2'])
 
@@ -378,6 +358,22 @@ compare_two_distributions(filter_30(politicians)['num_outliers_2'], filter_30(po
 
 # %%
 result2 = st.ks_2samp(filter_30(politicians)['num_outliers_2'].sample(150).values, filter_30(politicians)['num_outliers_2'].sample(150).values)
+
+# %%
+import importlib
+importlib.reload(utils)
+
+# %%
+politicians_f = utils.filter_users(politicians)
+
+# %%
+journalists_f = utils.filter_users(journalists)
+
+# %%
+random_followers_f = utils.filter_users(random_followers)
+
+# %%
+random_friends_f = utils.filter_users(random_friends)
 
 # %%
 
@@ -401,8 +397,8 @@ compare_two_distributions(filter_30(random_friends)['num_outliers_2'], filter_30
 compare_two_distributions(filter_30(politicians)['num_outliers_2'], filter_30(journalists)['num_outliers_2'], prop=0.6, n=10000)
 
 # %%
-import matplotlib.pyplot as plt
-importlib.reload(plt)
+# import matplotlib.pyplot as plt
+importlib.reload(utils)
 
 
 # %%
@@ -413,23 +409,51 @@ def mean_hist(series, n=1000, prop=0.7, **kwargs):
 
 
 # %%
-p = mean_hist(filter_30(politicians)['num_outliers_2'], prop=0.5, n=100, label='politicians')
-# j = mean_hist(filter_30(journalists)['num_outliers_2'], prop=0.5, n=100,  label='journalists')
-r1 = mean_hist(filter_30(random_friends)['num_outliers_2'],  prop=0.5, n=100, label='random_friends')
-# r2 = mean_hist(filter_30(random_followers)['num_outliers_2'],  prop=0.5, n=100, label='random_friends')
+# p = mean_hist(politicians_f['num_outliers_2'], prop=0.5, n=100, label='politicians')
+j = mean_hist(journalists_f['num_outliers_2'], prop=0.5, n=100,  label='journalists')
+# r1 = mean_hist(random_friends_f['num_outliers_2'],  prop=0.5, n=100, label='random_friends')
+r2 = mean_hist(random_followers_f['num_outliers_2'],  prop=0.5, n=100, label='random_followers')
 plt.legend()#[p, j, r1, r2],['politicians', 'journalists', 'random_friends', 'random_followers'])
 plt.title('Outliers distribution')
+
+# %%
+utils.plot_best_args(journalists_f['num_outliers_2'].value_counts().sort_index(), 'gamma', title='journalists')
+
+
+# %%
+utils.plot_best_args(politicians_f['num_outliers_2'].value_counts().sort_index(), 'gamma', title='politicians')
+
+# %%
+utils.plot_best_args(random_friends_f['num_outliers_2'].value_counts().sort_index(), 'gamma', 'random_friends')
+
+# %%
+utils.plot_best_args(random_followers_f['num_outliers_2'].value_counts().sort_index(), 'gamma', 'random_friends')
+
+# %%
+compare_two_distributions(politicians_f['num_outliers_2'], journalists_f['num_outliers_2'], prop=0.8, n=1000)
+
+# %%
+compare_two_distributions(politicians_f['num_outliers_2'], random_friends_f['num_outliers_2'], prop=0.8, n=1000)
+
+# %%
+compare_two_distributions(random_friends_f['num_outliers_2'], journalists_f['num_outliers_2'], prop=0.8, n=1000)
+
+# %%
+compare_two_distributions(random_friends_f['num_outliers_2'], random_followers_f['num_outliers_2'], prop=0.8, n=1000)
+
+# %%
+# utils.plot_best_args(politicians_f['num_outliers_2'], 'expoweib')
 
 # %%
 # p = mean_hist(filter_30(politicians)['num_outliers_2'], prop=0.5, n=100, label='politicians')
-j = mean_hist(filter_30(journalists)['num_outliers_2'], prop=0.5, n=100,  label='journalists')
-r1 = mean_hist(filter_30(random_friends)['num_outliers_2'],  prop=0.5, n=100, label='random_friends')
+# j = mean_hist(filter_30(journalists)['num_outliers_2'], prop=0.5, n=100,  label='journalists')
+# r1 = mean_hist(filter_30(random_friends)['num_outliers_2'],  prop=0.5, n=100, label='random_friends')
 # r2 = mean_hist(filter_30(random_followers)['num_outliers_2'],  prop=0.5, n=100, label='random_friends')
 plt.legend()#[p, j, r1, r2],['politicians', 'journalists', 'random_friends', 'random_followers'])
 plt.title('Outliers distribution')
 
 # %%
-plt.
+# plt.
 
 # %%
 mean_hist(filter_30(journalists)['num_outliers_2'], prop=0.5, n=100);pass
@@ -439,5 +463,174 @@ mean_hist(filter_30(random_friends)['num_outliers_2'])
 
 # %%
 mean_hist(filter_30(random_followers)['num_outliers_2'])
+
+# %% [markdown]
+# # Clustering by distribution num outliers
+
+# %%
+st.wasserstein_distance
+
+
+# %%
+def load_user_distribution_action_users(db,root='./data', party=False):
+    import os
+    path = os.path.join(root,db)
+    dict_distributions = {}
+    dict_party = {}
+    for p in os.listdir(path):
+        path_file = os.path.join(path,p)
+        actions = pd.read_pickle(path_file).reset_index()
+        if len(actions)>2:     
+            if party:
+                dict_party[p[:-4]] = get_political_party(utils.user_frequency(actions))
+            timeline = actions[actions['type']!='Like']
+            u_freq = utils.user_frequency(timeline, skip_ones=True)
+            if len(u_freq)>1:
+                dict_distributions[p[:-4]] = u_freq
+    return dict_distributions, dict_party
+
+
+# %%
+def load_db_profiles(db,root='./data', db_profiles=None, dict_party=None):
+    db_profiles = pd.read_pickle('./data/'+db+'.pkl')
+    user_profile = ['followers_count','friends_count', 'verified', 'statuses_count','favourites_count']
+    if dict_party:
+        series_party = pd.Series(dict_party)
+        db_profiles.loc[series_party.index,'party']=series_party.fillna('--')
+        user_profile+=['party']
+    return db_profiles[user_profile]
+    
+
+
+# %%
+key = 'politicians'
+
+# %%
+dist_politicians, dict_party_p = load_user_distribution_action_users('politicians') 
+# dist_politicians, dict_party_f = load_user_distribution_action_users('') 
+# dict_party
+
+# %%
+dist_journalists, dict_party_p = load_user_distribution_action_users('journalists') 
+
+# %%
+dist_random_followers, dict_party_r = load_user_distribution_action_users('random-followers') 
+
+# %%
+dist_random_friends, dict_party_r = load_user_distribution_action_users('random-friends') 
+
+# %%
+# dist_politicians
+series_party = pd.Series(dict_party)
+
+# %%
+# series_party
+series_party
+
+# %%
+# series_party = pd.Series(dict_party)
+# df = pd.DataFrame(index=dist_politicians.keys())
+# user_profile = ['followers_count','friends_count', 'verified', 'statuses_count','favourites_count','party']
+# profiles = pd.read_pickle('./data/'+key+'.pkl')
+# profiles.loc[series_party.index,'party']=series_party.fillna('--')
+
+# %%
+dict_big = {**dist_journalists, **dist_random_followers, **dist_random_friends, **dist_politicians}
+
+# %%
+len(dict_big)
+
+# %%
+df = pd.Series(index=list(dict_big.keys()))
+
+# %%
+df
+
+# %%
+df = pd.DataFrame(index=list(dict_big.keys()))
+for i, id_u in enumerate(df.index):
+    dist_u = dict_big[id_u]
+    a = [st.wasserstein_distance(dict_big[id_v].values, dist_u.values) for id_v in df.index]
+    df[id_u]=a
+
+# %%
+import umap
+fit = umap.UMAP(n_components=2, random_state=42, metric='precomputed')
+
+# %%
+# df.head()
+
+# %%
+u = fit.fit_transform(df)
+
+# %%
+columns_umap=['UMAP_{}'.format(i) for i in range(len(u[0]))]
+
+# %%
+umap_df = pd.DataFrame(u, index=df.index, columns=columns_umap)
+# umap_df = umap_df.join(profiles[user_profile])
+
+# %%
+umap_df.loc[dist_politicians.keys(), 'type']='politicians'
+
+# %%
+umap_df.loc[dist_random_followers.keys(), 'type']='random_followers'
+
+# %%
+umap_df.loc[dist_random_friends.keys(), 'type']='random_friends'
+
+# %%
+umap_df.loc[dist_journalists.keys(), 'type']='journalists'
+
+
+# %%
+def plot(df, columns_to_plot, column_to_color=None, bins=None, columns_text=None):
+    import plotly.express as px
+    dim = len(columns_to_plot)
+    name_index = 'index'
+    if df.index.name!=None:
+        name_index = df.index.name
+    if columns_text==None:
+        columns_text = df.columns
+    df_plot = df.reset_index()
+    color = None
+    if column_to_color and column_to_color in df.columns:
+        if column_to_color == 'k-means':
+            kmeans = KMeans(n_clusters=bins)
+            kmeans.fit(df.values)
+            clusters = kmeans.predict(df)
+            df_plot['k-means'] = pd.Series(clusters)
+            color='k-means'
+        elif bins:
+            df_plot[column_to_color+'_bins'] = pd.qcut(df_plot[column_to_color], q=bins, labels=range(bins)).astype(int)
+            color = column_to_color+'_bins'
+        else:
+            color = column_to_color
+    if dim==3:
+        fig = px.scatter_3d(df_plot, 
+                        x=columns_to_plot[0],
+                        y=columns_to_plot[1], 
+                        z=columns_to_plot[2],
+                        color=color,
+                        hover_name=name_index,
+                        hover_data=list(columns_text))
+    else:
+        fig = px.scatter(df_plot, 
+                        x=columns_to_plot[0],
+                        y=columns_to_plot[1],
+                        color=color,
+                        hover_name=name_index,
+                        hover_data=list(columns_text))
+    return fig
+
+
+# %%
+# %matplotlib inline
+
+# %%
+umap_df.columns
+
+# %%
+plot(umap_df, columns_umap, column_to_color='type').write_html('dist_umap_type.html', auto_open=True)
 
 # %%

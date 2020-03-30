@@ -4,6 +4,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from statsmodels.stats import stattools
+import scipy.stats as st
+
 
 import time
 
@@ -301,6 +303,16 @@ def get_light_timeline(timeline):
     return timeline[['type','screen_name']]
 
 
+def filter_users(users):
+    users_filtered = users.copy()
+    users_filtered = users_filtered[users_filtered['followers_count']<=2454815].copy()
+    users_filtered = users_filtered[users_filtered['frequency_timeline']<=100].copy()
+    users_filtered = users_filtered[users_filtered['frequency_like']<=130].copy()
+    users_filtered = users_filtered[users_filtered['num_outliers_2']<=25].copy()
+    users_filtered = users_filtered[users_filtered['social_ratio']>=10].copy()
+    return users_filtered
+
+
 # # Stats utils
 
 import scipy.stats as st
@@ -317,12 +329,12 @@ def relevant_outliers(count_series,m=1.5):
     return count_series>outlier_num(count_series,m)
 
 
-def plot_best_args(frequency, dist_name):
+def plot_best_args(frequency, dist_name, title=None):
     y = np.concatenate([np.zeros(v)+i+1 for i, v in enumerate(frequency.values)])
     #first
     plt.subplot(131)
     dist = getattr(st, dist_name)
-    plt.hist(y, density=True, alpha=0.5, bins=len(users))
+    plt.hist(y, density=True, alpha=0.5, bins=len(frequency))
     args = dist.fit(y, floc=0)
     x = np.linspace(y.min(), y.max(), 100)
     plt.plot(x, dist(*args).pdf(x))
@@ -338,12 +350,14 @@ def plot_best_args(frequency, dist_name):
     plt.legend()
     #third
     plt.subplot(133)
-    from st import probplot
-    probplot(y, dist=dist(*args),plot=plt, fit=True)
+    
+    st.probplot(y, dist=dist(*args),plot=plt, fit=True)
     plt.title("{} QQ-plot".format(dist_name))
     
     #plt.show()
-    return args
+    if title: plt.suptitle(title)
+    test = st.kstest(y, dist_name, args=args)    
+    return args, test
 
 
 def get_best_args(frequency, dist_name):
@@ -351,6 +365,21 @@ def get_best_args(frequency, dist_name):
     dist = getattr(st, dist_name)
     args = dist.fit(y, floc=0)
     return args
+
+
+def compare_two_distributions(a1, a2, n=1000, prop=0.7):
+    min_len = min(len(a1), len(a2))
+    sample_size = int(prop*min_len)
+    tests = [st.ks_2samp(a1.sample(sample_size).values, a2.sample(sample_size).values) for i in range(n)]
+    return np.mean(np.array(list(map(lambda x: np.array([x.statistic, x.pvalue]), tests))), axis=0)
+
+
+
+def check_prop_two_distributions(a1, a2, n=1000):
+    dict_prop = {}
+    for prop in [0.5, 0.6, 0.7, 0.8, 0.9]:
+        dict_prop[prop]=compare_two_distributions(a1, a2, n, prop)
+    return dict_prop
 
 # +
 # twitter_client = TwitterClient()
