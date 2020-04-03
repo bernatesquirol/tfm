@@ -138,17 +138,6 @@ class TwitterClient():
             dict_user_details[screen_name] = self.try_call(lambda: self.twitter.show_user(screen_name=screen_name, include_entities=False))
         return dict_user_details
         
-    def get_light_user_data(self, user, path_file=None):
-        timeline = self.get_timeline(user)
-        light_timeline = utils.get_light_timeline(timeline)
-        del timeline
-        likes = self.get_likes(user)
-        light_likes = utils.get_light_likes(likes)
-        del likes
-        concat = pd.concat([light_timeline, light_likes])
-        if path_file:
-            concat.to_pickle(os.path.join(path_file,'{}.pkl'.format(user)))
-        return concat
     def try_call(self, call, deep=1, throw_errors = False):
         try:
             response = call()
@@ -248,26 +237,78 @@ def user_frequency(tweets, skip_ones=True):
         value_counts = value_counts[value_counts>1].copy()
     return value_counts
 
-# create functions to get table 
+# ## Features timeline
+# Similar to
 # https://academic.oup.com/jcmc/article/22/5/231/4666424
 
 
-def get_features_timeline(timeline):
+# +
+def get_political_party(user_freq, user=None):
+    top15 = user_freq[:15].index
+    dict_parties = {
+                    'psoe': ['PSOE','GaliciaCnSusana', 'socialistes_cat', 'PSLPSOE','astro_duque','psoedeandalucia','PSOELaRioja', 'PSOE_Zamora'],
+                    'pp':['populares','PopularesHuesca','PPdePalencia','PPRMurcia', 'NNGG_Palos'],
+                    'podemos': ['iunida', 'EnComu_Podem', 'PODEMOS', 'Podem_'],
+                    'maspais':['compromis','MasPais_Es'],
+                    'cc': ['coalicion'],
+                    'cup':['cupnacional'],
+                    'vox_es':['vox_es'],
+                    'ciudadanos':['CiudadanosCs'],
+                    'erc':['Esquerra_ERC','alexvallbal'],
+                    'cdc': ['JuntsXCat','Pdemocratacat'],
+                    'pnv': ['eajpnv'],
+                    'bildu':['ehbildu'],
+                    'upn':['upn_navarra'],
+                    'prc':['prcantabria'],
+                    'bng':['obloque']
+                   }
+    for key, values in dict_parties.items():
+        if np.any(top15.isin(values)):
+            return key
+    return np.nan
+            
+
+# -
+
+def get_features_timeline(actions, party=False):
     features = {}
-    if timeline['created_at'].dtype=='O':
-        timeline_df['created_at']=pd.to_datetime(timeline_df['created_at'])
-    features['user'] = user
-    #features['f_f'] = timeline.iloc[0].user['followers_count']/timeline.iloc[0].user['friends_count']
-    features['frequency']= len(timeline) / (timeline['created_at'].max()-timeline['created_at'].min()).days
-    timeline['utils-type']=timeline.apply(get_type_tweet, axis=1)
-    social_tweets_count = len(timeline[timeline['utils-type']!='Text'])
-    features['social_ratio'] = 100*social_tweets_count/len(timeline)
-    features['reply_sratio'] = 100*(len(timeline[timeline['utils-type']=='Reply'])/social_tweets_count)
-    features['rt_sratio'] = 100*(len(timeline[timeline['utils-type']=='RT'])/social_tweets_count)
-    features['mention_sratio'] = 100*(len(timeline[timeline['utils-type']=='Mention'])/social_tweets_count)
-    features['quoted_sratio'] = 100*(len(timeline[timeline['utils-type']=='Quoted'])/social_tweets_count)
-    sorted_features = sorted([features['reply_sratio'],features['rt_sratio'],features['mention_sratio']],reverse=True)
-    features['f_s']=sorted_features[0]/sorted_features[1]
+    if len(actions)<2: return {}
+    users_freq_actions = user_frequency(actions)
+    if party:
+        features['party']=get_political_party(users_freq_actions)
+    if len(users_freq_actions)>1:
+        features['fit_exp'], features['fit_k'], dummie, features['fit_lambda'] = get_best_args(users_freq_actions, 'exponweib')    
+        features['1_2_actions']=users_freq_actions.iloc[0]/users_freq_actions.iloc[1]
+        if len(users_freq_actions)>2:
+            features['2_3_actions']=users_freq_actions.iloc[1]/users_freq_actions.iloc[2]        
+    timeline = actions[actions['type']!='Like']
+    likes = actions[actions['type']=='Like']
+    
+    timeline_len = (actions['created_at'].max()-timeline['created_at'].min()).days
+    if timeline_len>0:
+        features['frequency_timeline']= len(timeline) / timeline_len
+    likes_len = (actions['created_at'].max()-likes['created_at'].min()).days
+    if likes_len>0:
+        features['frequency_like']= len(likes) / likes_len
+    social_tweets_count = len(timeline[timeline['type']!='Text'])
+    if 'frequency_timeline' in features and 'frequency_like' in features:
+        features['like_tweet_ratio'] = features['frequency_like']/features['frequency_timeline']
+    if len(timeline):
+        features['social_ratio'] = 100*social_tweets_count/len(timeline)
+    if social_tweets_count>0:
+        features['reply_sratio'] = 100*(len(timeline[timeline['type']=='Reply'])/social_tweets_count)
+        features['rt_sratio'] = 100*(len(timeline[timeline['type']=='RT'])/social_tweets_count)
+        features['mention_sratio'] = 100*(len(timeline[timeline['type']=='Mention'])/social_tweets_count)
+        features['quoted_sratio'] = 100*(len(timeline[timeline['type']=='Quoted'])/social_tweets_count)
+        freq_1 = user_frequency(timeline, skip_ones=False)
+        if len(freq_1)>1:
+            features['num_outliers_1'] = len(freq_1[relevant_outliers(freq_1)])
+        freq_2 = user_frequency(timeline, skip_ones=True)
+        if len(freq_2)>1:
+            features['num_outliers_2'] =len(freq_2[relevant_outliers(freq_2)])
+        sorted_features = sorted([features['reply_sratio'],features['rt_sratio'],features['mention_sratio']],reverse=True)
+        if sorted_features[1]>0:
+            features['1_2_ratios']=sorted_features[0]/sorted_features[1]
     return features
 
 
@@ -303,14 +344,38 @@ def get_light_timeline(timeline):
     return timeline[['type','screen_name']]
 
 
-def filter_users(users):
+def filter_users(users, max_dict = {'followers_count':2454815, 
+                                    'frequency_timeline':100,
+                                    'frequency_like':130, 
+                                    'num_outliers_2':25},
+                        min_dict = {'social_ratio':10}
+                ):
     users_filtered = users.copy()
-    users_filtered = users_filtered[users_filtered['followers_count']<=2454815].copy()
-    users_filtered = users_filtered[users_filtered['frequency_timeline']<=100].copy()
-    users_filtered = users_filtered[users_filtered['frequency_like']<=130].copy()
-    users_filtered = users_filtered[users_filtered['num_outliers_2']<=25].copy()
-    users_filtered = users_filtered[users_filtered['social_ratio']>=10].copy()
+    for col, max_col in max_dict.items():
+        users_filtered = users_filtered[users_filtered[col]<=max_col].copy()
+    for col, min_col in min_dict.items():
+        users_filtered = users_filtered[users_filtered[col]>=min_col].copy()
     return users_filtered
+
+
+# # Database load
+
+def get_screen_names(path):
+    return [name[:-4] for name in os.listdir(path)]
+
+
+def load_users(db,root='..\\data', party=False):
+    import os
+    path = os.path.join(root,db)
+    list_politicians_dict = {}
+    for p in os.listdir(path):
+        path_file = os.path.join(path,p)
+        p_dict = get_features_timeline(pd.read_pickle(path_file).reset_index(), party=party)
+        list_politicians_dict[p[:-4]]=p_dict
+    activity_profiles = pd.DataFrame(list_politicians_dict).T
+    user_profile = ['followers_count','friends_count', 'verified', 'statuses_count','favourites_count']
+    profiles = pd.read_pickle(path+'.pkl')
+    return profiles[user_profile].join(activity_profiles)
 
 
 # # Stats utils
@@ -399,7 +464,67 @@ def check_prop_two_distributions(a1, a2, n=1000):
 # # Visualization
 
 
+# ## Single
+
+import altair as alt
+
+
+def get_user_final_timeline(timeline, types):
+    final = timeline[timeline.type.isin(types)].copy()
+    freq = final.screen_name.value_counts()
+    relevant_outliers_result = relevant_outliers(freq)
+    final['outlier']=final.screen_name.apply(lambda user: relevant_outliers_result[user] if user in relevant_outliers_result else False)
+    return final
+
+
+# +
+def plot_top_users_time(user, types=['RT', 'Mention', 'Text', 'Reply', 'Quoted', 'Like'] ):
+    final = get_user_final_timeline(user, types)
+    all_users_x_month = alt.Chart(final,width=400).mark_bar(
+        cornerRadiusTopLeft=3,
+        cornerRadiusTopRight=3
+    ).encode(
+        x='yearmonth(created_at):O',
+        y=alt.Y('count():Q'),#, sort=alt.SortField(field="count():Q", op="distinct", order='ascending')),
+        color=alt.Color('screen_name:N',sort='-y'),
+        order=alt.Order('count():Q')
+    )
+    outlier_transparency = alt.Chart(final, width=400).mark_bar(
+        cornerRadiusTopLeft=3,
+        cornerRadiusTopRight=3,
+        opacity=0.7,
+        color='black'
+    ).encode(
+        x='yearmonth(created_at):O',
+        y=alt.Y('count():Q'),#, sort=alt.SortField(field="count():Q", op="distinct", order='ascending')),
+        opacity=alt.Opacity('outlier:O',sort='-y', scale=alt.Scale(range=[0.35,0])),
+        order='order:N'
+    ).transform_calculate(
+        order="if (datum.outlier, 1, 0)"
+    )
+    return alt.layer(all_users_x_month,outlier_transparency).resolve_scale(color='independent')
+
+
+# -
+
+def plot_top_rt_and_quote(user):
+    final = get_user_final_timeline(user,  types=['RT', 'Quote'])
+    return alt.Chart(final).mark_bar(
+        cornerRadiusTopLeft=3,
+        cornerRadiusTopRight=3
+    ).encode(
+        x=alt.X('screen_name:N', sort='-y'),
+        y=alt.Y('count():Q'),
+        color='outlier'
+    )
+
+
+# ## Global analysis
+
 import ipywidgets as widgets
+import plotly.express as px
+import plotly.graph_objs as go
+from plotly.offline import download_plotlyjs, init_notebook_mode, plot, iplot
 
 
 def plot(df, columns_to_plot, column_to_color=None, bins=None):
