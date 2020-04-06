@@ -136,7 +136,7 @@ for i, db_1 in enumerate(dbs):
         tests = utils.compare_two_distributions(db_1['num_outliers_2'], db_2['num_outliers_2'], prop=0.8, n=1000)
         dict_statistic[names[i]][names[j]]=tests[0]
         dict_pvalue[names[i]][names[j]]=tests[1]
-    
+
 
 # %%
 pd.DataFrame.from_dict(dict_pvalue).round(7)
