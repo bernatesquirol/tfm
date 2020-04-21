@@ -19,6 +19,9 @@ import pandas as pd
 
 
 # %%
+import matplotlib.pyplot as plt
+
+# %%
 from __future__ import print_function
 from ipywidgets import interact, interactive, fixed, interact_manual
 
@@ -26,25 +29,107 @@ from ipywidgets import interact, interactive, fixed, interact_manual
 # %load_ext autoreload
 
 # %%
-# %autoreload 2
 
 # %%
-# twitter_client = utils.TwitterClient()
-
-
-# %%
-politicians = utils.load_users('politicians', party=True)
+# twitter_client = utils.TswitterClient()
 
 
 # %%
-random_friends = utils.load_users('random-friends')
 
 
 # %%
-random_followers = utils.load_users('random-followers')
+
 
 # %%
-journalists = utils.load_users('journalists')
+
+# %%
+
+# %%
+politicians.to_pickle('politicians.pkl')
+
+# %%
+random_friends.to_pickle('random_friends.pkl')
+
+# %%
+random_followers.to_pickle('random_followers.pkl')
+
+# %%
+journalists.to_pickle('journalists.pkl')
+
+
+# %% [markdown]
+# ## Straight analysis
+
+# %%
+def text_rt_ratio(users, maxim=np.inf, minim=0):
+    rt_ratio = users['rt_sratio']*users['social_ratio']/100
+#     txt_ratio = 100-users['social_ratio']
+    return filter_ratio(rt_ratio/100, maxim, minim)
+
+
+# %%
+def text_rt_ratio_log(users):
+    ratio = text_rt_ratio(users)
+#     ratio = ratio[ratio>10e-2 & ratio<10e2].copy()
+    return ratio.apply(lambda x: math.log(x))
+
+
+# %%
+def filter_ratio(series, maxim, minim):
+    return series[(series<maxim) & (series>minim)]
+
+
+# %%
+politicians_f = utils.filter_users(politicians)
+journalists_f = utils.filter_users(journalists)
+random_followers_f = utils.filter_users(random_followers)
+random_friends_f = utils.filter_users(random_friends)
+
+# %%
+# text_rt_ratio(journalists_f).head()
+# def plot_all_db(dbs)
+
+# %%
+grid = plt.GridSpec(2, 3, wspace=0.4, hspace=0.3)
+
+# %%
+plt.subplot(grid[0, 0])
+plt.subplot(grid[0, 1:])
+plt.subplot(grid[1, :2])
+plt.subplot(grid[1, 2]);
+
+# %%
+fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
+journalists_f['rt_ratio'].hist(ax=ax1)
+politicians_f['rt_ratio'].hist(ax=ax2)
+random_friends_f['rt_ratio'].hist(ax=ax3)
+random_followers_f['rt_ratio'].hist(ax=ax4)
+
+# %%
+ax1.subplot
+
+# %%
+text_rt_ratio(pd.concat([random_friends_f,random_followers_f])).hist()
+
+# %%
+text_rt_ratio(random_followers_f).max()
+
+# %%
+fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2)
+text_rt_ratio_log(journalists_f).hist(ax=ax1)
+ax1.legend('journalists_f')
+text_rt_ratio_log(politicians_f).hist(ax=ax2)
+ax2.legend('politicians_f')
+text_rt_ratio_log(random_friends_f).hist(ax=ax3)
+ax3.legend('1')
+text_rt_ratio_log(random_followers_f).hist(ax=ax4)
+ax4.legend('2')
+
+# %%
+text_rt_ratio_log(pd.concat([random_friends_f,random_followers_f])).hist()
+
+# %%
+import math
 
 # %% [markdown]
 # # Plot interactive

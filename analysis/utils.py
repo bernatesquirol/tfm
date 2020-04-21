@@ -268,47 +268,49 @@ def get_political_party(user_freq, user=None):
     return np.nan
 
 
-def get_features_timeline(actions, party=False):
-    features = {}
-    if len(actions)<2: return {}
-    users_freq_actions = user_frequency(actions)
-    if party:
-        features['party']=get_political_party(users_freq_actions)
-    if len(users_freq_actions)>1:
-        features['fit_exp'], features['fit_k'], dummie, features['fit_lambda'] = get_best_args(users_freq_actions, 'exponweib')    
-        features['1_2_actions']=users_freq_actions.iloc[0]/users_freq_actions.iloc[1]
-        if len(users_freq_actions)>2:
-            features['2_3_actions']=users_freq_actions.iloc[1]/users_freq_actions.iloc[2]        
-    timeline = actions[actions['type']!='Like']
-    likes = actions[actions['type']=='Like']
-    
-    timeline_len = (actions['created_at'].max()-timeline['created_at'].min()).days
-    if timeline_len>0:
-        features['frequency_timeline']= len(timeline) / timeline_len
-    likes_len = (actions['created_at'].max()-likes['created_at'].min()).days
-    if likes_len>0:
-        features['frequency_like']= len(likes) / likes_len
-    social_tweets_count = len(timeline[timeline['type']!='Text'])
-    if 'frequency_timeline' in features and 'frequency_like' in features:
-        features['like_tweet_ratio'] = features['frequency_like']/features['frequency_timeline']
-    if len(timeline):
-        features['social_ratio'] = 100*social_tweets_count/len(timeline)
-    if social_tweets_count>0:
-        features['reply_sratio'] = 100*(len(timeline[timeline['type']=='Reply'])/social_tweets_count)
-        features['rt_sratio'] = 100*(len(timeline[timeline['type']=='RT'])/social_tweets_count)
-        features['mention_sratio'] = 100*(len(timeline[timeline['type']=='Mention'])/social_tweets_count)
-        features['quoted_sratio'] = 100*(len(timeline[timeline['type']=='Quoted'])/social_tweets_count)
-        freq_1 = user_frequency(timeline, skip_ones=False)
-        if len(freq_1)>1:
-            features['num_outliers_1'] = len(freq_1[relevant_outliers(freq_1)])
-        freq_2 = user_frequency(timeline, skip_ones=True)
-        if len(freq_2)>1:
-            features['num_outliers_2'] =len(freq_2[relevant_outliers(freq_2)])
-        sorted_features = sorted([features['reply_sratio'],features['rt_sratio'],features['mention_sratio']],reverse=True)
-        if sorted_features[1]>0:
-            features['1_2_ratios']=sorted_features[0]/sorted_features[1]
-    return features
-
+# +
+# def get_features_timeline(actions, party=False):
+#     features = {}
+#     if len(actions)<2: return {}
+#     users_freq_actions = user_frequency(actions)
+#     if party:
+#         features['party']=get_political_party(users_freq_actions)
+#     if len(users_freq_actions)>1:
+# #         features['fit_exp'], features['fit_k'], dummie, features['fit_lambda'] = get_best_args(users_freq_actions, 'exponweib')    
+#         features['1_2_actions']=users_freq_actions.iloc[0]/users_freq_actions.iloc[1]
+#         if len(users_freq_actions)>2:
+#             features['2_3_actions']=users_freq_actions.iloc[1]/users_freq_actions.iloc[2]        
+#     timeline = actions[actions['type']!='Like']
+#     likes = actions[actions['type']=='Like']
+#     features['last_action'] = timeline['created_at'].max()
+#     features['first_action'] = timeline['created_at'].min()
+#     timeline_len = (actions['created_at'].max()-timeline['created_at'].min()).days
+#     if timeline_len>0:
+#         features['frequency_timeline']= len(timeline) / timeline_len
+#     likes_len = (actions['created_at'].max()-likes['created_at'].min()).days
+#     if likes_len>0:
+#         features['frequency_like']= len(likes) / likes_len
+#     social_tweets_count = len(timeline[timeline['type']!='Text'])
+#     if 'frequency_timeline' in features and 'frequency_like' in features:
+#         features['like_tweet_ratio'] = features['frequency_like']/features['frequency_timeline']
+#     if len(timeline):
+#         features['social_ratio'] = 100*social_tweets_count/len(timeline)
+#     if social_tweets_count>0:
+#         features['reply_sratio'] = 100*(len(timeline[timeline['type']=='Reply'])/social_tweets_count)
+#         features['rt_sratio'] = 100*(len(timeline[timeline['type']=='RT'])/social_tweets_count)
+#         features['mention_sratio'] = 100*(len(timeline[timeline['type']=='Mention'])/social_tweets_count)
+#         features['quoted_sratio'] = 100*(len(timeline[timeline['type']=='Quoted'])/social_tweets_count)
+#         freq_1 = user_frequency(timeline, skip_ones=False)
+#         if len(freq_1)>1:
+#             features['num_outliers_1'] = len(freq_1[relevant_outliers(freq_1)])
+#         freq_2 = user_frequency(timeline, skip_ones=True)
+#         if len(freq_2)>1:
+#             features['num_outliers_2'] =len(freq_2[relevant_outliers(freq_2)])
+#         sorted_features = sorted([features['reply_sratio'],features['rt_sratio'],features['mention_sratio']],reverse=True)
+#         if sorted_features[1]>0:
+#             features['1_2_ratios']=sorted_features[0]/sorted_features[1]
+#     return features
+# -
 
 def get_light_timeline(timeline):
     if len(timeline)==0:
@@ -344,7 +346,7 @@ def get_light_timeline(timeline):
 
 def filter_users(users, max_dict = {'followers_count':2454815, 
                                     'frequency_timeline':100,
-                                    'frequency_like':130, 
+#                                     'frequency_like':130, 
                                     'num_outliers_2':25},
                         min_dict = {'social_ratio':10}
                 ):
@@ -362,6 +364,54 @@ def get_screen_names(path):
     return [name[:-4] for name in os.listdir(path)]
 
 
+def get_features_timeline(actions, party=False):
+    features = {}
+    if len(actions)<2: return {}
+    users_freq_actions = user_frequency(actions)
+    if party:
+        features['party']=get_political_party(users_freq_actions)
+    if len(users_freq_actions)>1:
+#         features['fit_exp'], features['fit_k'], dummie, features['fit_lambda'] = get_best_args(users_freq_actions, 'exponweib')    
+        features['1_2_actions']=users_freq_actions.iloc[0]/users_freq_actions.iloc[1]
+        if len(users_freq_actions)>2:
+            features['2_3_actions']=users_freq_actions.iloc[1]/users_freq_actions.iloc[2]        
+    timeline = actions[actions['type']!='Like']
+    likes = actions[actions['type']=='Like']
+    features['last_action'] = timeline['created_at'].max()
+    features['first_action'] = timeline['created_at'].min()
+    timeline_len = (actions['created_at'].max()-timeline['created_at'].min()).days
+    if timeline_len>0:
+        features['frequency_timeline']= len(timeline) / timeline_len
+    likes_len = (actions['created_at'].max()-likes['created_at'].min()).days
+    if likes_len>0:
+        features['frequency_like']= len(likes) / likes_len
+    social_tweets_count = len(timeline[timeline['type']!='Text'])
+    if 'frequency_timeline' in features and 'frequency_like' in features:
+        features['like_tweet_ratio'] = features['frequency_like']/features['frequency_timeline']
+    if len(timeline):
+        features['social_ratio'] = 100*social_tweets_count/len(timeline)
+    features['rt_ratio'] = 100*(len(timeline[timeline['type']=='RT'])/len(timeline))
+    if social_tweets_count>0:
+        features['reply_sratio'] = 100*(len(timeline[timeline['type']=='Reply'])/social_tweets_count)
+        features['rt_sratio'] = 100*(len(timeline[timeline['type']=='RT'])/social_tweets_count)
+        features['mention_sratio'] = 100*(len(timeline[timeline['type']=='Mention'])/social_tweets_count)
+        features['quoted_sratio'] = 100*(len(timeline[timeline['type']=='Quoted'])/social_tweets_count)
+        freq_1 = user_frequency(timeline, skip_ones=False)
+        if len(freq_1)>1:
+            features['num_outliers_1'] = len(freq_1[relevant_outliers(freq_1)])
+        freq_2 = user_frequency(timeline, skip_ones=True)
+        if len(freq_2)>1:
+            features['num_outliers_2'] =len(freq_2[relevant_outliers(freq_2)])
+        sorted_features = sorted([features['reply_sratio'],features['rt_sratio'],features['mention_sratio']],reverse=True)
+        if sorted_features[1]>0:
+            features['1_2_ratios']=sorted_features[0]/sorted_features[1]
+    return features
+
+
+def get_pre_post_covid(db):
+    return (db[db.created_at<=pd.Timestamp('15/03/2020 00:00').tz_localize('UTC')], db[db.created_at>pd.Timestamp('15/03/2020 00:00').tz_localize('UTC')])
+
+
 def load_users(db,root='..\\data', party=False):
     import os
     path = os.path.join(root,db)
@@ -372,9 +422,56 @@ def load_users(db,root='..\\data', party=False):
         list_politicians_dict[p[:-4]]=p_dict
     activity_profiles = pd.DataFrame(list_politicians_dict).T
     user_profile = ['followers_count','friends_count', 'verified', 'statuses_count','favourites_count']
-    profiles = pd.read_pickle(path+'.pkl')
-    return profiles[user_profile].join(activity_profiles)
+    try:
+        profiles = pd.read_pickle(path+'.pkl')
+        return profiles[user_profile].join(activity_profiles)
+    except:
+        return activity_profiles
 
+
+def load_users_covid(db,root='..\\data', party=False):
+    import os
+    path = os.path.join(root,db)
+    list_politicians_dict_pre = {}
+    list_politicians_dict_post = {}
+    for p in os.listdir(path):
+        try:
+            path_file = os.path.join(path,p)
+            timeline = pd.read_pickle(path_file).reset_index()
+            if len(timeline)>0:
+                timeline = timeline.rename(columns={'createdAt': 'created_at'})
+                pre_timeline, post_timeline = get_pre_post_covid(timeline)
+                p_dict_pre = get_features_timeline(pre_timeline, party=party)
+                list_politicians_dict_pre[int(p[:-4])]=p_dict_pre
+                p_dict_post = get_features_timeline(post_timeline, party=party)
+                list_politicians_dict_post[int(p[:-4])]=p_dict_post
+        except:
+            print(p)
+    activity_profiles_pre = pd.DataFrame(list_politicians_dict_pre).T
+    activity_profiles_post = pd.DataFrame(list_politicians_dict_post).T
+    
+    user_profile = ['followers_count','friends_count', 'verified', 'statuses_count','favourites_count', 'screen_name']
+    try:
+        profiles = pd.read_pickle(path+'.pkl').set_index('id')
+        return (profiles[user_profile].join(activity_profiles_pre, how='inner'), profiles[user_profile].join(activity_profiles_post, how='inner'))
+    except:
+        return activity_profiles_pre, activity_profiles_post
+
+# +
+# profiles.join(pre, 'id')
+# -
+
+
+
+# +
+# pre.index.name='id'
+
+# +
+# a = (pre_timeline.groupby('created_at').count()>2)
+
+# +
+# a[a['type']]
+# -
 
 # # Stats utils
 
