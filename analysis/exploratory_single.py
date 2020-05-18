@@ -16,7 +16,7 @@ rcParams['figure.figsize'] = 15, 8
 
 
 # %%
-user = '../data/politicians/PabloIglesias.pkl'
+user = '../data/random-friends-big/707913.pkl'
 actions = pd.read_pickle(user).reset_index()
 
 
@@ -35,11 +35,66 @@ get_ipython().run_line_magic('autoreload', '2')
 # ## Timeline visualization
 
 # %%
+import utils
+
+# %%
 utils.plot_top_users_time(actions, types=['RT'])
 
 
 # %%
-utils.plot_top_rt_and_quote(actions)
+from statsmodels.stats import stattools
+
+
+# %%
+def outlier_num(count_series,m=1.5):
+    q3=count_series.quantile(q=.75)
+    q1=count_series.quantile(q=.25)
+    #print(medcouple(values),q3+np.exp(3*medcouple(values))*m*(q3-q1))
+    return q3+np.exp(3*stattools.medcouple(count_series))*m*(q3-q1)
+def relevant_outliers(count_series,m=1.5):
+    return count_series>outlier_num(count_series,m)
+
+
+# %%
+def get_user_final_timeline(timeline, types):
+    final = timeline[timeline.type.isin(types)].copy()
+    freq = final.screen_name.value_counts()
+    freq =freq[freq>1]
+#     return freq
+    relevant_outliers_result = relevant_outliers(freq)
+    final['outlier']=final.screen_name.apply(lambda user: relevant_outliers_result[user] if user in relevant_outliers_result else False)
+    return final
+
+
+# %%
+
+# %%
+import os
+list_pkl = pd.Series(os.listdir('../data/politicians'))
+
+# %%
+id_ = list_pkl.sample(1).iloc[0]
+
+# %%
+user = '../data/politicians/{}'.format(id_)
+actions = pd.read_pickle(user).reset_index()
+
+# %%
+final = get_user_final_timeline(actions, ['RT'])
+alt.Chart(final).mark_bar(
+    cornerRadiusTopLeft=3,
+    cornerRadiusTopRight=3
+).encode(
+    x=alt.X('screen_name:N', sort='-y'),
+    y=alt.Y('count():Q', axis=alt.Axis(title='Number of RT')),
+    color='outlier'
+)
+
+
+# %%
+def plot_top_rt_and_quote(user):
+    final = get_user_final_timeline(user,  types=['RT', 'Quote'])
+    
 
 
 # %% [markdown]

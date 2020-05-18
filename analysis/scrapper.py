@@ -12,7 +12,6 @@ import matplotlib as plt
 
 
 # %%
-
 twitter_client = utils.TwitterClient()
 
 
@@ -24,7 +23,7 @@ def get_light_user_data(twitter_client, user, path_file=None, get_likes=True):
     timeline = twitter_client.get_timeline(user)
     light_timeline = utils.get_light_timeline(timeline)
     del timeline
-    likes = twitter_client.get_likes(user)
+#     likes = twitter_client.get_likes(user)
     if get_likes:
         light_likes = utils.get_light_likes(likes)
         del likes
@@ -121,6 +120,9 @@ for source in sources:
     all_followers_dict[source]=list_following
 
 # %%
+import unidecode
+
+# %%
 key_words = ['corresponsal', 'periodist', 'redactor', 'xornalista' ]
 key_neg_words = ['corresponsales', 'periodistas', 'redactores', 'xornalistas', 'sport', 'deport', 'chiringuito', 'diputad', 'parlament', 'gobierno' ]
 journalists = {}
@@ -128,21 +130,22 @@ for key, users in all_followers_dict.items():
     for index, user in users.iterrows():
         description = unidecode.unidecode(user['description'].lower())
         if len([1 for kw in key_words if kw in description or kw in sources])>0 and len([1 for kw in key_neg_words if kw in description])==0:
-            journalists[user['id']]={
-                                        'screen_name':user['screen_name'],
-                                        'favourites_count': user['favourites_count'],
-                                        'followers_count': user['followers_count'], 
-                                        'friends_count': user['friends_count']
-                                    }
+            journalists[user['id']]=user
 
 # %%
-journalists_df = pd.DataFrame(journalists.values(), index=journalists.keys()).sort_values('followers_count', ascending=False)
+journalists_df = pd.DataFrame(journalists.values(), index=journalists.keys())#.sort_values('followers_count', ascending=False)
+
+# %%
+journalists_df.to_pickle('./journalists_raw.pkl')
+
+# %%
+journalists_df.columns
 
 # %% [markdown]
 # ## Interactions
 
 # %%
-take = journalists_df.sample(905)
+# take = journalists_df.sample(905)
 
 # %%
 for s_n in take:
@@ -241,3 +244,106 @@ save_users_database('../data/random-followers')
 
 # %%
 save_users_database('../data/random-friends')
+
+# %% [markdown]
+# ## Get timeline outliers
+
+# %%
+import os
+import pandas as pd
+import utils
+
+
+# %%
+def get_covid_user(timeline):
+    timeline = timeline.rename(columns={'createdAt': 'created_at'})
+    pre_timeline, post_timeline = utils.get_pre_post_covid(timeline)
+    p_dict_pre = utils.get_features_timeline(pre_timeline)
+    p_dict_post = utils.get_features_timeline(post_timeline)
+    return [activity_profiles_pre, activity_profiles_post]
+
+
+# %%
+def load_users_covid(db,root='..\\data', party=False):
+    import os
+    path = os.path.join(root,db)
+    list_politicians_dict_pre = {}
+    list_politicians_dict_post = {}
+    for p in os.listdir(path):
+        try:
+            path_file = os.path.join(path,p)
+            timeline = pd.read_pickle(path_file).reset_index()
+            if len(timeline)>0:
+                timeline = timeline.rename(columns={'createdAt': 'created_at'})
+                pre_timeline, post_timeline = get_pre_post_covid(timeline)
+                p_dict_pre = get_features_timeline(pre_timeline, party=party)
+                list_politicians_dict_pre[int(p[:-4])]=p_dict_pre
+                p_dict_post = get_features_timeline(post_timeline, party=party)
+                list_politicians_dict_post[int(p[:-4])]=p_dict_post
+        except:
+            print(p)
+    activity_profiles_pre = pd.DataFrame(list_politicians_dict_pre).T
+    activity_profiles_post = pd.DataFrame(list_politicians_dict_post).T
+    
+    user_profile = ['followers_count','friends_count', 'verified', 'statuses_count','favourites_count', 'screen_name']
+    try:
+        profiles = pd.read_pickle(path+'.pkl').set_index('id')
+        return (profiles[user_profile].join(activity_profiles_pre, how='inner'), profiles[user_profile].join(activity_profiles_post, how='inner'))
+    except:
+        return activity_profiles_pre, activity_profiles_post
+
+
+# %%
+dict_all_pre = {}
+
+# %%
+import tqdm
+
+# %%
+freq
+
+# %%
+a
+
+# %%
+for d1 in ['politicians','journalists-new', 'random-followers-big', 'random-followers', 'random-friends', 'random-friends-big']:
+    for d2 in tqdm.tqdm(os.listdir(os.path.join('../data',d1))):
+        a = pd.read_pickle(os.path.join('../data',d1,d2))
+        if len(a)>1:
+            pre, post = utils.get_pre_post_covid(a.reset_index().rename(columns={'createdAt': 'created_at'}))
+            freq_pre = pre.screen_name.value_counts()
+            freq_pre = freq_pre[freq_pre>1]
+            freq_post = post.screen_name.value_counts()
+            freq_post = freq_post[freq_post>1]
+            if len(freq_pre)>1 and len(freq_post)>1:
+                dict_all[d2] = [i for i in freq_post[utils.relevant_outliers(freq_post)].index if i not in freq_pre[utils.relevant_outliers(freq_pre)].index]
+
+# %%
+all_index = np.hstack([v for k,v in dict_all.items() if len(v)>0])
+pd.Series(list(range(len(all_index))), index=all_index)
+
+# %%
+pd.Series(list(range(len(all_index))), index=all_index).to_pickle('post_index.pkl')
+
+# %%
+indexes = [(v.index) for v in dict_all.values()]
+
+# %%
+len(indexes)
+
+# %%
+pd.Series(indexes).to_pickle('all_index.pkl')
+
+# %%
+dict_all_df = pd.DataFrame(dict_all)
+
+# %%
+import pandas as pd
+
+# %%
+post = pd.read_pickle('post_index.pkl')
+
+# %%
+post[~post.index.duplicated()].to_pickle('post_index.pkl')
+
+# %%

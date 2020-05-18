@@ -485,6 +485,7 @@ def outlier_num(count_series,m=1.5):
     return q3+np.exp(3*stattools.medcouple(count_series))*m*(q3-q1)
 
 
+
 def relevant_outliers(count_series,m=1.5):
     return count_series>outlier_num(count_series,m)
 
