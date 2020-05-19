@@ -83,8 +83,17 @@ def get_timeline_frequency(path):
     timeline = pd.read_pickle('data/timelines/'+path).sort_index(ascending=True).reset_index()
     timeline.created_at = timeline.created_at.apply(lambda ts: ts-datetime.timedelta(hours=ts.hour, minutes=ts.minute, seconds=ts.second))
     freq = timeline.created_at.value_counts(sort=False).loc[timeline.created_at.unique()]
-    return freq
+    freq = freq[freq.index>pd.to_datetime('2019-09-01 00:00:00+00:00')]
+    missing_dates = pd.Series(0, index=[i for i in pd.date_range(freq.index.min(), periods=(freq.index.max()-freq.index.min()).days) if i not in freq.index])
+    return pd.concat([freq, missing_dates]).sort_index()
 
+
+# +
+# get_timeline_frequency(i).index
+
+# +
+# len(get_timeline_frequency(i))
+# -
 
 # $$ C_i \sim \text{Poisson}(\lambda)  $$
 #
@@ -174,15 +183,9 @@ def fit_bipoisson_model(values, num_burnin_steps=5000, num_results=20000, step_s
         current_state=initial_chain_state,
         kernel = kernel)
     tau_samples = tf.floor(posterior_tau * tf.cast(tf.size(count_data),dtype=tf.float32))
-    return { 'tau': tau_samples, 'lambda_1':lambda_1_samples, 'lambda_2': lambda_2_samples, 'kernel_results': kernel_results, 'kernel': kernel }
+    #freq.index
+    return { 'tau': np.array([pd.to_datetime(freq.index.values[int(t)]) for t in tau_samples]), 'tau_samples':tau_samples, 'lambda_1':lambda_1_samples, 'lambda_2': lambda_2_samples, 'kernel_results': kernel_results, 'kernel': kernel }
 
-
-
-# +
-# model = fit_bipoisson_model(freq.values)
-
-
-# -
 
 def plot_lambdas(l1, l2):
     import plotly.graph_objects as go
@@ -194,18 +197,65 @@ def plot_lambdas(l1, l2):
     return fig
 
 
+def plot_tau(model):
+    import plotly.graph_objects as go
+    fig = go.Figure()
+    fig.add_trace(go.Histogram(x=model['tau'], histnorm='probability', name='tau'))
+    return fig
+
+
+def print_tau(model):
+    return pd.Series(model['tau']).value_counts()/len(model['tau'])
+
+
 # +
 # fig = plot_lambdas(model['lambda_1'],model['lambda_2'])
 # -
 
+def expected_texts_bipoisson(model, freq):
+    model = item['model']
+    n_count_data = len(freq)
+    N_ = model['tau'].shape[0]
+    day_range = tf.range(0,n_count_data,delta=1,dtype = tf.int32)
+    day_range = tf.expand_dims(day_range,0)
+    day_range = tf.tile(day_range,tf.constant([N_,1]))
+    tau_samples_per_day = tf.expand_dims(model['tau_samples'],0)
+    tau_samples_per_day = tf.transpose(tf.tile(tau_samples_per_day,tf.constant([day_range.shape[1],1])))
+    tau_samples_per_day = tf.cast(tau_samples_per_day,dtype=tf.int32)
+    ix_day = day_range < tau_samples_per_day
+    lambda_1_samples_per_day = tf.expand_dims(model['lambda_1'],0)
+    lambda_1_samples_per_day = tf.transpose(tf.tile(lambda_1_samples_per_day,tf.constant([day_range.shape[1],1])))
+    lambda_2_samples_per_day = tf.expand_dims(model['lambda_2'],0)
+    lambda_2_samples_per_day = tf.transpose(tf.tile(lambda_2_samples_per_day,tf.constant([day_range.shape[1],1])))
+    expected_texts_per_day = ((tf.reduce_sum(lambda_1_samples_per_day*tf.cast(ix_day,dtype=tf.float32),axis=0) + tf.reduce_sum(lambda_2_samples_per_day*tf.cast(~ix_day,dtype=tf.float32),axis=0))/N_)
+    return expected_texts_per_day
+
+
+def plot_expected(model, freq):
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=freq.index, y=expected_texts_bipoisson(model, freq), mode='lines', name='# tweets'))
+    fig.add_trace(go.Bar(x=freq.index, y=freq.values, name='expected # tweets'))
+    return fig
+# expected_texts_per_day = tf.zeros(N_,n_count_data.shape[0])
+
+
 i = os.listdir('data/timelines')[0]
 freq = get_timeline_frequency(i)
 
+# +
+# [tf.timestamp(a) for a in freq.index]
+# -
+
 model = fit_bipoisson_model(freq.values)
+
+plot_expected(item['model'], item['freq'])
+
+missed_some = pd.read_pickle('data/missed_some_may_update.pkl')
 
 models = {}
 for i in os.listdir('data/timelines'):
-    print(i)
+    if i in missed_some.values:
+        continue
     try:
         t0 = datetime.datetime.now()
         freq = get_timeline_frequency(i)
@@ -217,17 +267,5 @@ for i in os.listdir('data/timelines'):
         break
     except:
         print('bad {}'.format(i))
-
-sum([v['performance'] for i, v in models.items()])/len(models)
-
-for k in models.keys():
-    fig = plot_lambdas(models[k]['model']['lambda_1'].numpy(), models[k]['model']['lambda_2'].numpy()) 
-    fig.show()
-
-
-
-
-
-
 
 

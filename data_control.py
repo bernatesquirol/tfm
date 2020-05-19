@@ -41,9 +41,42 @@ for i,g in all_profiles[all_profiles.index.duplicated(keep=False)].reset_index()
 
 # +
 # all_profiles[(~all_profiles.index.duplicated(keep=False)) | (all_profiles.index.isin(save_duplicates))].to_pickle('all_profiles.pkl')
-
-# +
-# all_profiles[(~all_profiles.index.duplicated(keep=False)) | (all_profiles.index.isin(save_duplicates))]
 # -
+
+# all_profiles[(~all_profiles.index.duplicated(keep=False)) | (all_profiles.index.isin(save_duplicates))]
+import pandas as pd
+missed_some = []
+
+pd.Series(missed_some).to_pickle('missed_some_may_update.pkl')
+
+import os
+for i in os.listdir('data/all_ids_to_update'):
+    print(i)
+    new = pd.read_pickle('data/all_ids_to_update/'+i)
+    try:
+        old = pd.read_pickle('data/timelines/'+i)
+        if old.index.max()<new.index.min():
+            print('missed_some', i, old.index.max(), new.index.min())
+            missed_some.append(i)
+        new_df = pd.concat([new[new.index>old.index.max()], old])
+        if len(old)>len(new_df):
+            print('something wrong')
+        else:
+            new_df.to_pickle('data/timelines/'+i)
+    except:
+        pass
+
+
+news = os.listdir('data/all_ids_to_update')
+
+olds = os.listdir('data/timelines')
+
+pd.Series([n for n in news if n not in olds]).to_pickle('data/news_not_old.pkl')
+
+new.min()
+
+pd.concat([new[new.index>old.index.max()], old])
+
+new[new.index>old.index.max()]
 
 
