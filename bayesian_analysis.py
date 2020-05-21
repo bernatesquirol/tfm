@@ -2,6 +2,7 @@ import pandas as pd
 import datetime
 matplotlib_style = 'fivethirtyeight' #@param ['fivethirtyeight', 'bmh', 'ggplot', 'seaborn', 'default', 'Solarize_Light2', 'classic', 'dark_background', 'seaborn-colorblind', 'seaborn-notebook']
 import matplotlib.pyplot as plt; plt.style.use(matplotlib_style)
+import plotly.graph_objects as go
 import numpy as np
 
 # +
@@ -20,7 +21,7 @@ import matplotlib.pyplot as plt; plt.style.use(matplotlib_style)
 import matplotlib.axes as axes;
 from matplotlib.patches import Ellipse
 # #%matplotlib inline
-import seaborn as sns; sns.set_context('notebook')
+# import seaborn as sns; sns.set_context('notebook')
 from IPython.core.pylabtools import figsize
 #@markdown This sets the resolution of the plot outputs (`retina` is the highest resolution)
 notebook_screen_res = 'retina' #@param ['retina', 'png', 'jpeg', 'svg', 'pdf']
@@ -184,8 +185,12 @@ def fit_bipoisson_model(values, num_burnin_steps=5000, num_results=20000, step_s
         kernel = kernel)
     tau_samples = tf.floor(posterior_tau * tf.cast(tf.size(count_data),dtype=tf.float32))
     #freq.index
-    return { 'tau': np.array([pd.to_datetime(freq.index.values[int(t)]) for t in tau_samples]), 'tau_samples':tau_samples, 'lambda_1':lambda_1_samples, 'lambda_2': lambda_2_samples, 'kernel_results': kernel_results, 'kernel': kernel }
+    return { 'tau': np.array([pd.to_datetime(freq.index.values[int(t)]) for t in tau_samples]), 'tau_samples':tau_samples, 'lambda_1':lambda_1_samples, 'lambda_2': lambda_2_samples}
 
+
+# +
+# tau_samples = tf.floor(posterior_tau * tf.cast(tf.size(count_data),dtype=tf.float32))
+# -
 
 def plot_lambdas(l1, l2):
     import plotly.graph_objects as go
@@ -205,15 +210,13 @@ def plot_tau(model):
 
 
 def print_tau(model):
-    return pd.Series(model['tau']).value_counts()/len(model['tau'])
+    print(pd.Series(model['tau']).value_counts()/len(model['tau']))
 
 
-# +
-# fig = plot_lambdas(model['lambda_1'],model['lambda_2'])
-# -
+fig = plot_lambdas(model['lambda_1'],model['lambda_2'])
+
 
 def expected_texts_bipoisson(model, freq):
-    model = item['model']
     n_count_data = len(freq)
     N_ = model['tau'].shape[0]
     day_range = tf.range(0,n_count_data,delta=1,dtype = tf.int32)
@@ -239,16 +242,35 @@ def plot_expected(model, freq):
 # expected_texts_per_day = tf.zeros(N_,n_count_data.shape[0])
 
 
+# +
+# model['kernel'].save
+# -
+
 i = os.listdir('data/timelines')[0]
 freq = get_timeline_frequency(i)
 
-# +
-# [tf.timestamp(a) for a in freq.index]
-# -
+
+def plot_everything(model, freq):
+    plot_lambdas(model['lambda_1'], model['lambda_2']).show()
+    print_tau(model)
+    plot_expected(model, freq).show()
+
 
 model = fit_bipoisson_model(freq.values)
 
-plot_expected(item['model'], item['freq'])
+import pickle
+
+
+# +
+# with open('fp.pickle', 'wb') as file:
+#     pickle.dump(model, file, protocol=pickle.HIGHEST_PROTOCOL)
+
+# +
+# model2 = pickle.load(open('fp.pickle',"rb"))
+
+# +
+# model2
+# -
 
 missed_some = pd.read_pickle('data/missed_some_may_update.pkl')
 
@@ -257,15 +279,26 @@ for i in os.listdir('data/timelines'):
     if i in missed_some.values:
         continue
     try:
+        print(i)
         t0 = datetime.datetime.now()
         freq = get_timeline_frequency(i)
         model = fit_bipoisson_model(freq.values)
         t1 = datetime.datetime.now()
-        models[i]={'model':model, 'freq':freq, 'performance':(t1-t0).seconds}
+        model_with_freq={'model':model, 'freq':freq, 'performance':(t1-t0).seconds}
+        with open('data/models/'+i, 'wb') as file:
+            pickle.dump(model_with_freq, file, protocol=pickle.HIGHEST_PROTOCOL)
     except KeyboardInterrupt:
         print('stopping')
         break
     except:
         print('bad {}'.format(i))
+
+i = os.listdir('data/models')[2]
+# plot_everything(), get_timeline_frequency(i))
+
+with open('data/models/'+i, "rb") as f:
+    pkl = pickle.load(f)
+
+plot_everything(pkl['model'],pkl['freq'])
 
 
