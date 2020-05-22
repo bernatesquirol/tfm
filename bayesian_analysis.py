@@ -4,22 +4,13 @@ matplotlib_style = 'fivethirtyeight' #@param ['fivethirtyeight', 'bmh', 'ggplot'
 import matplotlib.pyplot as plt; plt.style.use(matplotlib_style)
 import plotly.graph_objects as go
 import numpy as np
+from plotly.subplots import make_subplots
+
+import pickle
 
 # +
-warning_status = "ignore" #@param ["ignore", "always", "module", "once", "default", "error"]
-import warnings
-warnings.filterwarnings(warning_status)
-with warnings.catch_warnings():
-    warnings.filterwarnings(warning_status, category=DeprecationWarning)
-    warnings.filterwarnings(warning_status, category=UserWarning)
-
 import numpy as np
 import os
-#@markdown This sets the styles of the plotting (default is styled like plots from [FiveThirtyeight.com](https://fivethirtyeight.com/)
-matplotlib_style = 'fivethirtyeight' #@param ['fivethirtyeight', 'bmh', 'ggplot', 'seaborn', 'default', 'Solarize_Light2', 'classic', 'dark_background', 'seaborn-colorblind', 'seaborn-notebook']
-import matplotlib.pyplot as plt; plt.style.use(matplotlib_style)
-import matplotlib.axes as axes;
-from matplotlib.patches import Ellipse
 # #%matplotlib inline
 # import seaborn as sns; sns.set_context('notebook')
 from IPython.core.pylabtools import figsize
@@ -33,30 +24,6 @@ import tensorflow_probability as tfp
 tfd = tfp.distributions
 tfb = tfp.bijectors
 
-class _TFColor(object):
-    """Enum of colors used in TF docs."""
-    red = '#F15854'
-    blue = '#5DA5DA'
-    orange = '#FAA43A'
-    green = '#60BD68'
-    pink = '#F17CB0'
-    brown = '#B2912F'
-    purple = '#B276B2'
-    yellow = '#DECF3F'
-    gray = '#4D4D4D'
-    def __getitem__(self, i):
-        return [
-            self.red,
-            self.orange,
-            self.green,
-            self.blue,
-            self.pink,
-            self.brown,
-            self.purple,
-            self.yellow,
-            self.gray,
-        ][i % 9]
-TFColor = _TFColor()
 
 def session_options(enable_gpu_ram_resizing=True, enable_xla=False):
     """
@@ -80,6 +47,10 @@ import pandas as pd
 import datetime
 
 
+# # Timelines to perform the model on
+
+# We perform the model on timelines from 01-09-2019, and inputing the null dates to 0. This may cause a problem with the not fetch data
+
 def get_timeline_frequency(path):
     timeline = pd.read_pickle('data/timelines/'+path).sort_index(ascending=True).reset_index()
     timeline.created_at = timeline.created_at.apply(lambda ts: ts-datetime.timedelta(hours=ts.hour, minutes=ts.minute, seconds=ts.second))
@@ -88,13 +59,6 @@ def get_timeline_frequency(path):
     missing_dates = pd.Series(0, index=[i for i in pd.date_range(freq.index.min(), periods=(freq.index.max()-freq.index.min()).days) if i not in freq.index])
     return pd.concat([freq, missing_dates]).sort_index()
 
-
-# +
-# get_timeline_frequency(i).index
-
-# +
-# len(get_timeline_frequency(i))
-# -
 
 # $$ C_i \sim \text{Poisson}(\lambda)  $$
 #
@@ -148,8 +112,8 @@ def unnormalized_log_posterior(lambda1, lambda2, tau, count_data):
 from functools import partial 
 
 
-def fit_bipoisson_model(values, num_burnin_steps=5000, num_results=20000, step_size = 0.2):
-    count_data = tf.constant(values, dtype=tf.float32)
+def fit_bipoisson_model(freq, num_burnin_steps=5000, num_results=20000, step_size = 0.2):
+    count_data = tf.constant(freq.values, dtype=tf.float32)
     # wrap the mcmc sampling call in a @tf.function to speed it up
     @tf.function(autograph=False)
     def graph_sample_chain(*args, **kwargs):
@@ -178,7 +142,7 @@ def fit_bipoisson_model(values, num_burnin_steps=5000, num_results=20000, step_s
     
     kernel = tfp.mcmc.SimpleStepSizeAdaptation(
         inner_kernel=kernel, num_adaptation_steps=int(num_burnin_steps * 0.8))
-    [lambda_1_samples,lambda_2_samples, posterior_tau], kernel_results = graph_sample_chain(
+    [lambda_1_samples, lambda_2_samples, posterior_tau], kernel_results = graph_sample_chain(
         num_results=num_results,
         num_burnin_steps=num_burnin_steps,
         current_state=initial_chain_state,
@@ -188,32 +152,40 @@ def fit_bipoisson_model(values, num_burnin_steps=5000, num_results=20000, step_s
     return { 'tau': np.array([pd.to_datetime(freq.index.values[int(t)]) for t in tau_samples]), 'tau_samples':tau_samples, 'lambda_1':lambda_1_samples, 'lambda_2': lambda_2_samples}
 
 
-# +
-# tau_samples = tf.floor(posterior_tau * tf.cast(tf.size(count_data),dtype=tf.float32))
-# -
+def fit_and_save_model(i):
+    t0 = datetime.datetime.now()
+    freq = get_timeline_frequency(i)
+    model = fit_bipoisson_model(freq)
+    t1 = datetime.datetime.now()
+    model_with_freq={'model':model, 'freq':freq, 'performance':(t1-t0).seconds}
+    with open('data/models/'+i, 'wb') as file:
+        pickle.dump(model_with_freq, file, protocol=pickle.HIGHEST_PROTOCOL)
+    return model_with_freq
 
-def plot_lambdas(l1, l2):
-    import plotly.graph_objects as go
-    fig = go.Figure()
-    fig.add_trace(go.Histogram(x=l1, histnorm='probability', name='lambda_1'))
-    fig.add_trace(go.Histogram(x=l2, histnorm='probability',  name='lambda_2'))
-    fig.update_layout(barmode='overlay')
-    fig.update_traces(opacity=0.75)
+
+# # Plot model
+
+def plot_lambdas(l1, l2, fig=None, **kwargs):
+    if not fig:        
+        fig = go.Figure()
+    fig.add_trace(go.Histogram(x=l1, histnorm='probability', name='lambda_1'), **kwargs)
+    fig.add_trace(go.Histogram(x=l2, histnorm='probability',  name='lambda_2'), **kwargs)
+#     fig.update_layout(barmode='overlay')
+#     fig.update_traces(opacity=0.75)
     return fig
 
 
-def plot_tau(model):
-    import plotly.graph_objects as go
-    fig = go.Figure()
-    fig.add_trace(go.Histogram(x=model['tau'], histnorm='probability', name='tau'))
+def plot_tau(model, fig=None, **kwargs):
+    if not fig:
+        fig = go.Figure()    
+    fig.add_trace(go.Histogram(x=model['tau'], histnorm='probability', name='tau'), **kwargs)
     return fig
 
 
+def get_tau(model):
+    return pd.Series(model['tau']).value_counts()/len(model['tau'])
 def print_tau(model):
     print(pd.Series(model['tau']).value_counts()/len(model['tau']))
-
-
-fig = plot_lambdas(model['lambda_1'],model['lambda_2'])
 
 
 def expected_texts_bipoisson(model, freq):
@@ -234,71 +206,193 @@ def expected_texts_bipoisson(model, freq):
     return expected_texts_per_day
 
 
-def plot_expected(model, freq):
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=freq.index, y=expected_texts_bipoisson(model, freq), mode='lines', name='# tweets'))
-    fig.add_trace(go.Bar(x=freq.index, y=freq.values, name='expected # tweets'))
+def plot_expected(model, freq, n=1, fig=None, **kwargs):
+    if not fig:
+        fig = go.Figure()
+    fig.add_trace(go.Scatter(x=freq.index, y=expected_texts_bipoisson(model, freq) , mode='lines', name='expected # tweets'), **kwargs)
+    fig.add_trace(go.Scatter(x=freq.index, y=freq.rolling(n).mean(), mode='lines', name='moving mean n=1'), **kwargs)
+    fig.add_trace(go.Bar(x=freq.index, y=freq.values, name='# tweets'), **kwargs)
     return fig
 # expected_texts_per_day = tf.zeros(N_,n_count_data.shape[0])
 
 
-# +
-# model['kernel'].save
-# -
-
-i = os.listdir('data/timelines')[0]
-freq = get_timeline_frequency(i)
-
-
-def plot_everything(model, freq):
-    plot_lambdas(model['lambda_1'], model['lambda_2']).show()
-    print_tau(model)
-    plot_expected(model, freq).show()
+def plot_everything(model, freq, n=1):
+    fig = make_subplots(rows=4, cols=1, specs=[[{}],[{}],[{"rowspan":2}],[None]])
+    fig.update_layout(
+        height=600)
+    plot_lambdas(model['lambda_1'],model['lambda_2'], fig=fig, row=1, col=1)
+    plot_tau(model, fig=fig, row=2, col=1)
+    return plot_expected(model, freq, n=n, fig=fig, row=3, col=1, )
 
 
-model = fit_bipoisson_model(freq.values)
-
-import pickle
-
-
-# +
-# with open('fp.pickle', 'wb') as file:
-#     pickle.dump(model, file, protocol=pickle.HIGHEST_PROTOCOL)
-
-# +
-# model2 = pickle.load(open('fp.pickle',"rb"))
-
-# +
-# model2
-# -
+# # Calculate bipoisson for all
 
 missed_some = pd.read_pickle('data/missed_some_may_update.pkl')
 
-models = {}
-for i in os.listdir('data/timelines'):
-    if i in missed_some.values:
-        continue
-    try:
-        print(i)
-        t0 = datetime.datetime.now()
-        freq = get_timeline_frequency(i)
-        model = fit_bipoisson_model(freq.values)
-        t1 = datetime.datetime.now()
-        model_with_freq={'model':model, 'freq':freq, 'performance':(t1-t0).seconds}
-        with open('data/models/'+i, 'wb') as file:
-            pickle.dump(model_with_freq, file, protocol=pickle.HIGHEST_PROTOCOL)
-    except KeyboardInterrupt:
-        print('stopping')
-        break
-    except:
-        print('bad {}'.format(i))
+# +
+# models = {}
+# for i in os.listdir('data/timelines'):
+#     if i in missed_some.values:
+#         continue
+#     try:
+#         print(i)
+#         fit_and_save_model(i)
+#     except KeyboardInterrupt:
+#         print('stopping')
+#         break
+#     except:
+#         print('bad {}'.format(i))
+# -
 
-i = os.listdir('data/models')[2]
-# plot_everything(), get_timeline_frequency(i))
+# # Calculate bipoisson for given username
 
-with open('data/models/'+i, "rb") as f:
-    pkl = pickle.load(f)
+all_profiles = pd.read_pickle('data/all_profiles.pkl')
 
-plot_everything(pkl['model'],pkl['freq'])
+ids_missed = missed_some.apply(lambda x: x[:-4]).values
+
+id_to_model = all_profiles[all_profiles.type_profile=='politician'].sample().index[0]
+
+model_with_freq = fit_and_save_model('{}.pkl'.format(id_to_model))
+
+plot_everything(model_with_freq['model'], model_with_freq['freq'], n=7)
+
+# # Global analysis
+
+profiles = all_profiles.loc[[int(i[:-4]) for i in os.listdir('data/models') if int(i[:-4]) in all_profiles.index]].copy()
+
+profiles['model'] = profiles.apply(lambda x: pickle.load(open('data/models/{}.pkl'.format(x.name), "rb")), axis=1)
+
+# ## Total actions
+
+total_actions = profiles['model'].apply(lambda x: x['freq']).sum().reset_index().resample('W-Mon', on='index').sum()[0]
+fig = go.Figure()
+fig.add_trace(go.Bar(x=total_actions.index, y=total_actions.values))
+fig
+
+
+
+# ## We have info
+
+info_available = profiles['model'].apply(lambda x: x['freq'].apply(lambda x: 1)).sum().reset_index().resample('W-Mon', on='index').sum()[0]
+fig = go.Figure()
+fig.add_trace(go.Bar(x=info_available.index, y=info_available.values))
+fig
+
+
+# ## tau
+
+def plot_taus_profiles(profiles, fig=None, name=None, **kwargs):
+    taus = profiles['model'].apply(lambda m: get_tau(m['model']))
+    taus_sum = taus.sum(axis=0)
+    taus_weekly = taus_sum.reset_index().resample('W-Mon', on='index').sum()[0]
+    if not fig:
+        fig = go.Figure()
+    fig.add_trace(go.Bar(x=taus_weekly.index, y=taus_weekly.values, name=name), **kwargs)
+    return fig
+
+
+plot_taus_profiles(profiles)
+
+# #### by type
+
+fig = make_subplots(rows=profiles.type_profile.unique().shape[0], cols=1)
+for i, g in enumerate(profiles.groupby('type_profile')):
+    id_g, group = g
+    plot_taus_profiles(group, fig, name=id_g, row=i+1, col=1, )
+fig
+
+# #### by follower_count
+
+fig = make_subplots(rows=4, cols=1)
+profiles['followers_count_bins']=pd.qcut(profiles['followers_count'], q=4)
+for i, g in enumerate(profiles.groupby('followers_count_bins')):
+    id_g, group = g
+    plot_taus_profiles(group, fig, name=str(id_g), row=i+1, col=1, )
+fig
+
+# #### by number of total tweets
+
+fig = make_subplots(rows=4, cols=1)
+profiles['statuses_count_bins']=pd.qcut(profiles['statuses_count'], q=4)
+for i, g in enumerate(profiles.groupby('statuses_count_bins')):
+    id_g, group = g
+    plot_taus_profiles(group, fig, name=str(id_g), row=i+1, col=1, )
+fig
+
+# +
+# pd.cut(profiles['created_at'], bins=5)
+# -
+
+profiles['created_at'] = profiles['created_at'].apply(lambda x: pd.to_datetime(x))
+
+fig = make_subplots(rows=4, cols=1)
+profiles['created_at_bins']=pd.qcut(profiles['created_at'], q=4)
+for i, g in enumerate(profiles.groupby('created_at_bins')):
+    id_g, group = g
+    plot_taus_profiles(group, fig, name=str(id_g), row=i+1, col=1)
+fig
+
+profiles.columns
+
+# ## lambdas
+
+profiles['model'].apply(lambda m: m['model']['lambda_1'].numpy())
+
+l1 =  profiles['model'].apply(lambda m: m['model']['lambda_1'].numpy())
+
+l2 =  profiles['model'].apply(lambda m: m['model']['lambda_2'].numpy())
+
+min_l1, max_l1 = [l1.apply(lambda m: m.min()).min(), l1.apply(lambda m: m.max()).max()]
+
+min_l2, max_l2 = [l2.apply(lambda m: m.min()).min(), l2.apply(lambda m: m.max()).max()]
+
+# l1 =  profiles['model'].apply(lambda m: m['model']['lambda_1'].numpy())
+min_l, max_l = min(min_l1, min_l2), max(max_l1, max_l2)
+
+import math
+x_l = list(range(math.floor(min_l), math.ceil(max_l)))
+
+x_l_log = np.logspace(np.log10(0.001+min_l), np.log10(math.ceil(max_l)), 50, endpoint=True)
+x_l_log = np.hstack([[min_l],x_l_log])
+
+hist_l1 = l1.apply(lambda m: np.histogram(m, density=True, bins=x_l_log)[0])
+df_hist_l1 = pd.DataFrame(hist_l1.to_list(), index=hist_l1.index)
+
+hist_l2 = l2.apply(lambda m: np.histogram(m, density=True, bins=x_l_log)[0])
+df_hist_l2 = pd.DataFrame(hist_l2.to_list(), index=hist_l2.index)
+
+# +
+# hist_l1.values
+# hist_l2
+# -
+
+df_hist_l1.shape
+
+# +
+# x_l_log = np.logspace(0.01, np.log(200), 200, endpoint=True)
+# -
+
+fig = go.Figure()
+fig.add_trace(go.Bar(x=x_l,y=df_hist_l1.sum().values, name='lambda_1'))
+fig.add_trace(go.Bar(x=x_l,y=df_hist_l2.sum().values, name='lambda_2'))
+# fig.update_layout(barmode='overlay')
+# fig.update_traces(opacity=0.75)
+fig
+
+mean_diff =  profiles['model'].apply(lambda m: np.mean((m['model']['lambda_1'].numpy()-m['model']['lambda_2'].numpy())))
+
+# +
+# taus_2.loc[1000016300][pd.Timestamp('2020-05-06')]
+# -
+
+taus_and_lambdas_diff = pd.DataFrame(taus.apply(lambda t: [i*mean_diff[t.name] for i in t.values], axis=1).to_list(), index=taus.index, columns=taus.columns)
+
+fig = go.Figure()
+fig.add_trace(go.Bar(x=to_plot.index, y=to_plot.values))
+fig
+
+to_plot = taus_and_lambdas_diff.sum()
+
+taus.head().apply(lambda t: mean_diff[t.name], axis=1)
 
 

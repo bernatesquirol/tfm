@@ -4,6 +4,10 @@ for i in os.listdir('data/journalists'):
         full_timeline = pd.concat([pd.read_pickle('data/journalists-new/'+i),pd.read_pickle('data/journalists/'+i)])
         full_timeline[~full_timeline.index.duplicated()].to_pickle('data/timelines/'+i)
 
+import pickle
+
+pickle.load
+
 import pandas as pd
 
 pd.read_pickle('data/journalists/'+i)
