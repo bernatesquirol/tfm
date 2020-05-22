@@ -43,6 +43,9 @@ def session_options(enable_gpu_ram_resizing=True, enable_xla=False):
 
 session_options(enable_gpu_ram_resizing=True, enable_xla=True)
 # -
+PATH_DATA='data'
+
+
 import pandas as pd
 import datetime
 
@@ -52,7 +55,7 @@ import datetime
 # We perform the model on timelines from 01-09-2019, and inputing the null dates to 0. This may cause a problem with the not fetch data
 
 def get_timeline_frequency(path):
-    timeline = pd.read_pickle('data/timelines/'+path).sort_index(ascending=True).reset_index()
+    timeline = pd.read_pickle(PATH_DATA+'/timelines/'+path).sort_index(ascending=True).reset_index()
     timeline.created_at = timeline.created_at.apply(lambda ts: ts-datetime.timedelta(hours=ts.hour, minutes=ts.minute, seconds=ts.second))
     freq = timeline.created_at.value_counts(sort=False).loc[timeline.created_at.unique()]
     freq = freq[freq.index>pd.to_datetime('2019-09-01 00:00:00+00:00')]
@@ -158,7 +161,7 @@ def fit_and_save_model(i):
     model = fit_bipoisson_model(freq)
     t1 = datetime.datetime.now()
     model_with_freq={'model':model, 'freq':freq, 'performance':(t1-t0).seconds}
-    with open('data/models/'+i, 'wb') as file:
+    with open(PATH_DATA+'/models/'+i, 'wb') as file:
         pickle.dump(model_with_freq, file, protocol=pickle.HIGHEST_PROTOCOL)
     return model_with_freq
 
@@ -227,7 +230,7 @@ def plot_everything(model, freq, n=1):
 
 # # Calculate bipoisson for all
 
-missed_some = pd.read_pickle('data/missed_some_may_update.pkl')
+missed_some = pd.read_pickle(PATH_DATA+'/missed_some_may_update.pkl')
 
 # +
 # models = {}
@@ -246,7 +249,7 @@ missed_some = pd.read_pickle('data/missed_some_may_update.pkl')
 
 # # Calculate bipoisson for given username
 
-all_profiles = pd.read_pickle('data/all_profiles.pkl')
+all_profiles = pd.read_pickle(PATH_DATA+'/all_profiles.pkl')
 
 ids_missed = missed_some.apply(lambda x: x[:-4]).values
 
@@ -258,9 +261,9 @@ plot_everything(model_with_freq['model'], model_with_freq['freq'], n=7)
 
 # # Global analysis
 
-profiles = all_profiles.loc[[int(i[:-4]) for i in os.listdir('data/models') if int(i[:-4]) in all_profiles.index]].copy()
+profiles = all_profiles.loc[[int(i[:-4]) for i in os.listdir(PATH_DATA+'/models') if int(i[:-4]) in all_profiles.index]].copy()
 
-profiles['model'] = profiles.apply(lambda x: pickle.load(open('data/models/{}.pkl'.format(x.name), "rb")), axis=1)
+profiles['model'] = profiles.apply(lambda x: pickle.load(open(PATH_DATA+'/models/{}.pkl'.format(x.name), "rb")), axis=1)
 
 # ## Total actions
 

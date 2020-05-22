@@ -59,17 +59,46 @@ for i in os.listdir('data/all_ids_to_update'):
     new = pd.read_pickle('data/all_ids_to_update/'+i)
     try:
         old = pd.read_pickle('data/timelines/'+i)
-        if old.index.max()<new.index.min():
+        if old.index.max()<=new.index.min():
             print('missed_some', i, old.index.max(), new.index.min())
             missed_some.append(i)
-        new_df = pd.concat([new[new.index>old.index.max()], old])
-        if len(old)>len(new_df):
-            print('something wrong')
-        else:
-            new_df.to_pickle('data/timelines/'+i)
+#         new_df = pd.concat([new[new.index>old.index.max()], old])
+#         if len(old)>len(new_df):
+#             print('something wrong')
+#         else:
+#             new_df.to_pickle('data/timelines/'+i)
     except:
         pass
 
+
+def get_timeline_frequency(path):
+    timeline = pd.read_pickle('data/timelines/'+path).sort_index(ascending=True).reset_index()
+    if len(timeline)==0:
+        return None
+    timeline.created_at = timeline.created_at.apply(lambda ts: ts-datetime.timedelta(hours=ts.hour, minutes=ts.minute, seconds=ts.second))
+    
+    freq = timeline.created_at.value_counts(sort=False).loc[timeline.created_at.unique()]
+    freq = freq[freq.index>pd.to_datetime('2019-09-01 00:00:00+00:00')]
+    if len(freq)<50:
+        return None
+    missing_dates = pd.Series(0, index=[i for i in pd.date_range(freq.index.min(), periods=(freq.index.max()-freq.index.min()).days) if i not in freq.index])
+    return pd.concat([freq, missing_dates]).sort_index()
+
+
+import datetime
+
+pd.read_pickle('data/timelines/1000764488.pkl')
+
+freqs = {}
+# for i in os.listdir('data/timelines')[17320:]:
+#     freqs[i]=get_timeline_frequency(i)
+
+import shutil
+
+for timeline in skip_timelines:
+    shutil.move('data/timelines/'+timeline, 'data/useless_timelines/'+timeline)
+
+old[old.index>pd.Timestamp("2020-03-14").tz_localize('UTC')]
 
 news = os.listdir('data/all_ids_to_update')
 
