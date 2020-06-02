@@ -1,4 +1,6 @@
 [submodule "docs"]
+	path = docs
 	url = https://github.com/bernatesquirol/tfm-docs
 [submodule "plots"]
+	path = plots
 	url = https://github.com/bernatesquirol/tfm-plots
