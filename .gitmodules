@@ -1,6 +1,3 @@
-[submodule "tfm-plots"]
-	path = plots
-	url = https://github.com/bernatesquirol/tfm-plots.git
 [submodule "docs"]
 	path = docs
 	url = https://github.com/bernatesquirol/tfm-docs
