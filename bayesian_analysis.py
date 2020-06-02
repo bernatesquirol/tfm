@@ -6,6 +6,8 @@ import plotly.graph_objects as go
 import numpy as np
 from plotly.subplots import make_subplots
 
+PATH_DATA = './data'
+
 import pickle
 
 # +
@@ -43,9 +45,6 @@ def session_options(enable_gpu_ram_resizing=True, enable_xla=False):
 
 session_options(enable_gpu_ram_resizing=True, enable_xla=True)
 # -
-PATH_DATA='data'
-
-
 import pandas as pd
 import datetime
 
@@ -155,14 +154,16 @@ def fit_bipoisson_model(freq, num_burnin_steps=5000, num_results=20000, step_siz
     return { 'tau': np.array([pd.to_datetime(freq.index.values[int(t)]) for t in tau_samples]), 'tau_samples':tau_samples, 'lambda_1':lambda_1_samples, 'lambda_2': lambda_2_samples}
 
 
-def fit_and_save_model(i):
+
+def fit_and_save_model(i, num_burnin_steps=5000, num_results=20000, step_size = 0.2, save=True):
     t0 = datetime.datetime.now()
     freq = get_timeline_frequency(i)
-    model = fit_bipoisson_model(freq)
+    model = fit_bipoisson_model(freq, num_burnin_steps, num_results, step_size)
     t1 = datetime.datetime.now()
     model_with_freq={'model':model, 'freq':freq, 'performance':(t1-t0).seconds}
-    with open(PATH_DATA+'/models/'+i, 'wb') as file:
-        pickle.dump(model_with_freq, file, protocol=pickle.HIGHEST_PROTOCOL)
+    if save:
+        with open(PATH_DATA+'/models/'+i, 'wb') as file:
+            pickle.dump(model_with_freq, file, protocol=pickle.HIGHEST_PROTOCOL)
     return model_with_freq
 
 
@@ -214,18 +215,24 @@ def plot_expected(model, freq, n=1, fig=None, **kwargs):
         fig = go.Figure()
     fig.add_trace(go.Scatter(x=freq.index, y=expected_texts_bipoisson(model, freq) , mode='lines', name='expected # tweets'), **kwargs)
     fig.add_trace(go.Scatter(x=freq.index, y=freq.rolling(n).mean(), mode='lines', name='moving mean n=1'), **kwargs)
+    fig.add_trace(go.Scatter(x=freq.index, y=freq.rolling(n).mean()+freq.rolling(n).std(),
+        fill=None,
+        mode='lines',
+        line_color='rgba(250, 250, 0, 1)',
+        opacity=0.01,
+        ))
+    fig.add_trace(go.Scatter(x=freq.index, y=freq.rolling(n).mean()-freq.rolling(n).std(),
+        fill='tonexty', # fill area between trace0 and trace1
+        mode='lines',
+        line_color='rgba(250, 250, 0, 1)'))
     fig.add_trace(go.Bar(x=freq.index, y=freq.values, name='# tweets'), **kwargs)
     return fig
 # expected_texts_per_day = tf.zeros(N_,n_count_data.shape[0])
 
+# +
+# freq =  model_with_freq_10k['freq']
+# -
 
-def plot_everything(model, freq, n=1):
-    fig = make_subplots(rows=4, cols=1, specs=[[{}],[{}],[{"rowspan":2}],[None]])
-    fig.update_layout(
-        height=600)
-    plot_lambdas(model['lambda_1'],model['lambda_2'], fig=fig, row=1, col=1)
-    plot_tau(model, fig=fig, row=2, col=1)
-    return plot_expected(model, freq, n=n, fig=fig, row=3, col=1, )
 
 
 # # Calculate bipoisson for all
@@ -247,21 +254,38 @@ missed_some = pd.read_pickle(PATH_DATA+'/missed_some_may_update.pkl')
 #         print('bad {}'.format(i))
 # -
 
+with open('./data/models/100774646.pkl', 'rb') as f:
+    model = pickle.loads(f.read())
+
+# +
+# model
+# -
+
 # # Calculate bipoisson for given username
 
 all_profiles = pd.read_pickle(PATH_DATA+'/all_profiles.pkl')
 
 ids_missed = missed_some.apply(lambda x: x[:-4]).values
 
-id_to_model = all_profiles[all_profiles.type_profile=='politician'].sample().index[0]
+id_to_model = '241080178' # all_profiles[all_profiles.type_profile=='politician'].sample().index[0]
 
-model_with_freq = fit_and_save_model('{}.pkl'.format(id_to_model))
+model_with_freq_10k = fit_and_save_model('{}.pkl'.format(id_to_model), num_burnin_steps=5000, num_results=15000, step_size = 0.2, save=False)
 
-plot_everything(model_with_freq['model'], model_with_freq['freq'], n=7)
+plot_everything(model_with_freq_10k['model'], model_with_freq_10k['freq'], n=7)
+
+plot_everything(model_with_freq_10k['model'], model_with_freq_10k['freq'], n=7)
 
 # # Global analysis
 
-profiles = all_profiles.loc[[int(i[:-4]) for i in os.listdir(PATH_DATA+'/models') if int(i[:-4]) in all_profiles.index]].copy()
+all_models = os.listdir(PATH_DATA+'/models')
+
+sample = np.random.choice(all_models, 700)
+
+# +
+# sample
+# -
+
+profiles = all_profiles.loc[[int(i[:-4]) for i in sample if int(i[:-4]) in all_profiles.index]].copy()
 
 profiles['model'] = profiles.apply(lambda x: pickle.load(open(PATH_DATA+'/models/{}.pkl'.format(x.name), "rb")), axis=1)
 
@@ -341,6 +365,8 @@ profiles.columns
 
 profiles['model'].apply(lambda m: m['model']['lambda_1'].numpy())
 
+profiles['model']
+
 l1 =  profiles['model'].apply(lambda m: m['model']['lambda_1'].numpy())
 
 l2 =  profiles['model'].apply(lambda m: m['model']['lambda_2'].numpy())
@@ -382,20 +408,42 @@ fig.add_trace(go.Bar(x=x_l,y=df_hist_l2.sum().values, name='lambda_2'))
 # fig.update_traces(opacity=0.75)
 fig
 
-mean_diff =  profiles['model'].apply(lambda m: np.mean((m['model']['lambda_1'].numpy()-m['model']['lambda_2'].numpy())))
+mean_diff =  profiles['model'].apply(lambda m: np.mean((m['model']['lambda_2'].numpy()-m['model']['lambda_1'].numpy())))
 
 # +
-# taus_2.loc[1000016300][pd.Timestamp('2020-05-06')]
+# mean_diff
 # -
 
+taus = profiles['model'].apply(lambda m: get_tau(m['model']))
+
+taus
+
+taus
+
 taus_and_lambdas_diff = pd.DataFrame(taus.apply(lambda t: [i*mean_diff[t.name] for i in t.values], axis=1).to_list(), index=taus.index, columns=taus.columns)
+
+tal = taus_and_lambdas_diff.apply(lambda x: list([type(i) for i in x.values if type(i) != np.float64]), axis=1)
+
+taus_and_lambdas_diff = taus_and_lambdas_diff[-tal.apply(lambda x: len(x)>0)]
+
+to_plot = taus_and_lambdas_diff.sum()
+
+
 
 fig = go.Figure()
 fig.add_trace(go.Bar(x=to_plot.index, y=to_plot.values))
 fig
 
-to_plot = taus_and_lambdas_diff.sum()
+mean_diff_abs =  profiles['model'].apply(lambda m: np.mean(np.abs(m['model']['lambda_1'].numpy()-m['model']['lambda_2'].numpy())))
 
-taus.head().apply(lambda t: mean_diff[t.name], axis=1)
+taus_and_lambdas_diff_abs = pd.DataFrame(taus.apply(lambda t: [i*mean_diff_abs[t.name] for i in t.values], axis=1).to_list(), index=taus.index, columns=taus.columns)
+
+to_plot_abs = taus_and_lambdas_diff_abs.sum()
+
+fig = go.Figure()
+fig.add_trace(go.Bar(x=to_plot_abs.index, y=to_plot_abs.values))
+fig
+
+to_plot_abs.values
 
 
