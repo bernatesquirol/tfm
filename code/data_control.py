@@ -112,4 +112,26 @@ pd.concat([new[new.index>old.index.max()], old])
 
 new[new.index>old.index.max()]
 
+import os
+
+import pandas as pd
+import utils
+
+client = utils.TwitterClient()
+
+# %load_ext autoreload
+
+# %autoreload 2
+
+ids = [i[:-4] for i in os.listdir('../data/models') if int(i[:-4]) not in profiles.index]
+
+profiles = pd.read_pickle('../data/all_profiles.pkl')
+
+client.twitter.show_user(user_id=ids[0], include_entities=False)
+
+new_profiles = client.show_users_ids(ids)
+
+import importlib
+importlib.reload(utils)
+
 

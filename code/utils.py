@@ -137,7 +137,11 @@ class TwitterClient():
         for screen_name in screen_names:
             dict_user_details[screen_name] = self.try_call(lambda: self.twitter.show_user(screen_name=screen_name, include_entities=False))
         return dict_user_details
-        
+    def show_users_ids(self, ids):
+        dict_user_details = {}
+        for id_u in ids:
+            dict_user_details[id_u] = self.try_call(lambda: self.twitter.show_user(user_id=id_u, include_entities=False))
+        return dict_user_details
     def try_call(self, call, deep=1, throw_errors = False):
         try:
             response = call()

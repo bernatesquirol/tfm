@@ -49,18 +49,7 @@ import pandas as pd
 import datetime
 
 
-# # Timelines to perform the model on
-
-# We perform the model on timelines from 01-09-2019, and inputing the null dates to 0. This may cause a problem with the not fetch data
-
-def get_timeline_frequency(path):
-    timeline = pd.read_pickle(PATH_DATA+'/timelines/'+path).sort_index(ascending=True).reset_index()
-    timeline.created_at = timeline.created_at.apply(lambda ts: ts-datetime.timedelta(hours=ts.hour, minutes=ts.minute, seconds=ts.second))
-    freq = timeline.created_at.value_counts(sort=False).loc[timeline.created_at.unique()]
-    freq = freq[freq.index>pd.to_datetime('2019-09-01 00:00:00+00:00')]
-    missing_dates = pd.Series(0, index=[i for i in pd.date_range(freq.index.min(), periods=(freq.index.max()-freq.index.min()).days) if i not in freq.index])
-    return pd.concat([freq, missing_dates]).sort_index()
-
+# # Implementing the model
 
 # $$ C_i \sim \text{Poisson}(\lambda)  $$
 #
@@ -153,6 +142,19 @@ def fit_bipoisson_model(freq, num_burnin_steps=5000, num_results=20000, step_siz
     #freq.index
     return { 'tau': np.array([pd.to_datetime(freq.index.values[int(t)]) for t in tau_samples]), 'tau_samples':tau_samples, 'lambda_1':lambda_1_samples, 'lambda_2': lambda_2_samples}
 
+
+
+# # Timelines to perform the model on
+
+# We perform the model on timelines from 01-09-2019, and inputing the null dates to 0. This may cause a problem with the not fetch data
+
+def get_timeline_frequency(path):
+    timeline = pd.read_pickle(PATH_DATA+'/timelines/'+path).sort_index(ascending=True).reset_index()
+    timeline.created_at = timeline.created_at.apply(lambda ts: ts-datetime.timedelta(hours=ts.hour, minutes=ts.minute, seconds=ts.second))
+    freq = timeline.created_at.value_counts(sort=False).loc[timeline.created_at.unique()]
+    freq = freq[freq.index>pd.to_datetime('2019-09-01 00:00:00+00:00')]
+    missing_dates = pd.Series(0, index=[i for i in pd.date_range(freq.index.min(), periods=(freq.index.max()-freq.index.min()).days) if i not in freq.index])
+    return pd.concat([freq, missing_dates]).sort_index()
 
 
 def fit_and_save_model(i, num_burnin_steps=5000, num_results=20000, step_size = 0.2, save=True):
