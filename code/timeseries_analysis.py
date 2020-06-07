@@ -107,7 +107,7 @@ series_to_plot = (acfs_df.sum()/len(acfs_df))
 
 
 def plotly_to_tfm(fig, name):
-    fig.write_html('../plots/{}.html'.format(name), config={"responsive": True})
+    fig.write_html('../tfm-plots/{}.html'.format(name), config={"responsive": True})
 
 
 # +
