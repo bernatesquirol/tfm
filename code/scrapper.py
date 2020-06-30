@@ -23,7 +23,6 @@ def get_light_user_data(twitter_client, user, path_file=None, get_likes=True):
     timeline = twitter_client.get_timeline(user)
     light_timeline = utils.get_light_timeline(timeline)
     del timeline
-#     likes = twitter_client.get_likes(user)
     if get_likes:
         light_likes = utils.get_light_likes(likes)
         del likes
@@ -52,9 +51,6 @@ def save_users_database(path):
     get_users_data(indexes).to_pickle(path+'.pkl')
     
 
-
-# %%
-save_users_database
 
 # %% [markdown]
 # # Congress members
@@ -231,10 +227,10 @@ def execute_search():
 
 # %%
 # do this from 3 different notebooks with different cred
-for i in range(50):
-    print('----> volta', i)
-    execute_search()
-    time.sleep(300)
+# for i in range(50):
+#     print('----> volta', i)
+#     execute_search()
+#     time.sleep(300)
 
 # %% [markdown]
 # ## All random followers/following db
@@ -246,104 +242,114 @@ save_users_database('../data/random-followers')
 save_users_database('../data/random-friends')
 
 # %% [markdown]
-# ## Get timeline outliers
+# ## Profiles
+
+# %%
+import pandas as pd
+all_profiles = pd.read_pickle('../data/all_profiles.pkl')
 
 # %%
 import os
-import pandas as pd
+tls = os.listdir('../data/timelines')
+len(tls)
+
+# %%
+models = os.listdir('../data/models')
+
+# %%
+tls = [int(i[:-4]) for i in tls if int(i[:-4]) in all_profiles.index]
+
+# %%
+len(tls)
+
+# %%
+models = [int(i[:-4]) for i in models if int(i[:-4]) in tls]
+
+# %%
+import shutil
+for tl in tls:
+    shutil.move('../data/timelines/{}.pkl'.format(tl), '../data/bad_timelines/{}.pkl'.format(tl))
+
+# %%
+all_profiles.head()
+
+# %%
+from tqdm import tqdm
+
+
+# %%
+pd.Series([i for i in tls if i not in all_profiles.index]).to_pickle('../data/missing_users.pkl')
+
+# %%
+dict_all_tls = {}
+for tl_id in tqdm(tls):
+    tl = pd.read_pickle('../data/timelines/{}.pkl'.format(tl_id))
+    dict_all_tls[tl_id]=[tl.index.min(),tl.index.max()]
+
+# %%
+all_profiles['observed_start']=np.nan
+all_profiles['observed_end']=np.nan
+
+# %%
+start_and_end = pd.Series(list(dict_all_tls.values()), index=dict_all_tls.keys())
+all_profiles.loc[start_and_end.index, 'observed_start'] =start_and_end.apply(lambda x: x[0])
+all_profiles.loc[start_and_end.index, 'observed_end']=start_and_end.apply(lambda x: x[1])
+
+# %%
+pd.concat([all_profiles,pd.read_pickle('./users_missing_no.pkl')]).to_pickle('../data/all_profiles.pkl')
+
+# %%
+mod = ['observed_start','observed_end', 'type_profile']
+all_profiles[[c for c in all_profiles.columns if c not in mod]+mod].to_pickle('../data/all_profiles.pkl')
+
+# %%
+bad_index = all_profiles[all_profiles.type_profile.isnull()].index
+
+# %%
+values = {'journalists':'journalist',
+          'journalists-new':'journalist',
+          'politicians':'politician',
+          'random-followers':'random-follower',
+          'random-friends':'random-friend',
+          'random-friends-big':'random-friend',
+          'random-followers-big':'random-follower'}
+
+# %%
+all_files_dict = {}
+for folder in ['journalists', 'journalists-new', 'politicians', 'random-followers', 'random-friends', 'random-friends-big', 'random-followers-big']:
+    for i in os.listdir('../../tfm2/data_old/'+folder):
+        id_u = int(i[:-4])
+        if id_u in bad_index:
+            all_files_dict[id_u]=values[folder]
+#     print(values[folder])
+
+# %%
+len(bad_index),len(all_files_dict)
+
+# %%
+all_profiles.loc[list(all_files_dict.keys()), 'type_profile']=list(all_files_dict.values())
+
+# %%
+all_profiles.type_profile.unique()
+
+# %%
+import plotly.express as px
+fig = px.scatter(all_profiles[all_profiles.type_profile.isin(['random-friend', 'random-follower']) & (all_profiles.followers_count<5000) & (all_profiles.friends_count<5000)], x='followers_count', y='friends_count', color='type_profile')
+
+# %%
+fig['data'][0]['marker']['opacity']=0.1
+fig['data'][1]['marker']['opacity']=0.1
+
+# %%
+utils.plotly_to_tfm(fig, 'random-types-bias')
+
+# %%
 import utils
 
+# %%
+len(all_profiles)
 
 # %%
-def get_covid_user(timeline):
-    timeline = timeline.rename(columns={'createdAt': 'created_at'})
-    pre_timeline, post_timeline = utils.get_pre_post_covid(timeline)
-    p_dict_pre = utils.get_features_timeline(pre_timeline)
-    p_dict_post = utils.get_features_timeline(post_timeline)
-    return [activity_profiles_pre, activity_profiles_post]
-
-
-# %%
-def load_users_covid(db,root='..\\data', party=False):
-    import os
-    path = os.path.join(root,db)
-    list_politicians_dict_pre = {}
-    list_politicians_dict_post = {}
-    for p in os.listdir(path):
-        try:
-            path_file = os.path.join(path,p)
-            timeline = pd.read_pickle(path_file).reset_index()
-            if len(timeline)>0:
-                timeline = timeline.rename(columns={'createdAt': 'created_at'})
-                pre_timeline, post_timeline = get_pre_post_covid(timeline)
-                p_dict_pre = get_features_timeline(pre_timeline, party=party)
-                list_politicians_dict_pre[int(p[:-4])]=p_dict_pre
-                p_dict_post = get_features_timeline(post_timeline, party=party)
-                list_politicians_dict_post[int(p[:-4])]=p_dict_post
-        except:
-            print(p)
-    activity_profiles_pre = pd.DataFrame(list_politicians_dict_pre).T
-    activity_profiles_post = pd.DataFrame(list_politicians_dict_post).T
-    
-    user_profile = ['followers_count','friends_count', 'verified', 'statuses_count','favourites_count', 'screen_name']
-    try:
-        profiles = pd.read_pickle(path+'.pkl').set_index('id')
-        return (profiles[user_profile].join(activity_profiles_pre, how='inner'), profiles[user_profile].join(activity_profiles_post, how='inner'))
-    except:
-        return activity_profiles_pre, activity_profiles_post
-
-
-# %%
-dict_all_pre = {}
-
-# %%
-import tqdm
-
-# %%
-freq
-
-# %%
-a
-
-# %%
-for d1 in ['politicians','journalists-new', 'random-followers-big', 'random-followers', 'random-friends', 'random-friends-big']:
-    for d2 in tqdm.tqdm(os.listdir(os.path.join('../data',d1))):
-        a = pd.read_pickle(os.path.join('../data',d1,d2))
-        if len(a)>1:
-            pre, post = utils.get_pre_post_covid(a.reset_index().rename(columns={'createdAt': 'created_at'}))
-            freq_pre = pre.screen_name.value_counts()
-            freq_pre = freq_pre[freq_pre>1]
-            freq_post = post.screen_name.value_counts()
-            freq_post = freq_post[freq_post>1]
-            if len(freq_pre)>1 and len(freq_post)>1:
-                dict_all[d2] = [i for i in freq_post[utils.relevant_outliers(freq_post)].index if i not in freq_pre[utils.relevant_outliers(freq_pre)].index]
-
-# %%
-all_index = np.hstack([v for k,v in dict_all.items() if len(v)>0])
-pd.Series(list(range(len(all_index))), index=all_index)
-
-# %%
-pd.Series(list(range(len(all_index))), index=all_index).to_pickle('post_index.pkl')
-
-# %%
-indexes = [(v.index) for v in dict_all.values()]
-
-# %%
-len(indexes)
-
-# %%
-pd.Series(indexes).to_pickle('all_index.pkl')
-
-# %%
-dict_all_df = pd.DataFrame(dict_all)
-
-# %%
-import pandas as pd
-
-# %%
-post = pd.read_pickle('post_index.pkl')
-
-# %%
-post[~post.index.duplicated()].to_pickle('post_index.pkl')
+850396856551186432 in bad_index
 
 # %%

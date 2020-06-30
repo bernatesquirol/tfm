@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import pandas as pd
 
 # +
@@ -38,11 +39,7 @@ import utils
 
 import os
 import tqdm
-
-with open('./data/models/620553.pkl', 'rb') as f:
-    model_file = pickle.loads(f.read())
-
-model, freq = model_file['model'], model_file['freq']
+import datetime
 
 
 def artificial_timeline(model, freq, n=1):
@@ -55,12 +52,75 @@ def artificial_timeline(model, freq, n=1):
         yield pd.Series(values, index=freq.index)
 
 
+def model_digest(file):
+    f = pickle.load(open('../data/models/{}.pkl'.format(file), "rb"))
+    m = f['model']
+    tau_samples = m['tau_samples']
+    tau = np.histogram(tau_samples, bins=np.unique(tau_samples).shape[0])
+    indexes_tau = f['freq'].index
+    tau = (tau[0], [indexes_tau[int(i)] for i in tau[1]])
+    l1 = np.histogram(m['lambda_1'].numpy(), bins=10)
+    l2 = np.histogram(m['lambda_2'].numpy(), bins=10)
+    return {'tau':tau, 'lambda_1':l1, 'lambda_2':l2}
+
+
+def artificial_timeline_from_dict_levels(dict_levels, end):
+    relevant_dates = list(dict_levels.keys())+[end]
+    start = relevant_dates[0]
+    all_time = [start + datetime.timedelta(days=x) for x in range((end-start).days)]
+    list_all_poissons = []
+    levels = list(dict_levels.values())
+    zip_dates = zip(relevant_dates[:-1],relevant_dates[1:])
+    for i, interval in enumerate(zip_dates):
+        poi = tfd.Poisson(rate=float(levels[i])).sample(sample_shape=(interval[1]-interval[0]).days)
+        list_all_poissons.append(poi)
+    len_lists = [len(l) for l in list_all_poissons]
+    values = tf.concat(list_all_poissons, axis=0).numpy()
+    return pd.Series(values, index=all_time)
+
+
+from tqdm import tqdm
+import pickle
+
+# +
+# for m in tqdm(all_models):
+#     m_light = model_digest(m[:-4])
+#     with open('../data/models-light/'+m, 'wb') as file:
+#         pickle.dump(m_light, file)
+
+
+# +
+# file = m[:-4]
+# -
+
+m = pickle.load(open('../data/models/{}.pkl'.format('455018574'), "rb"))
+
+model_digest(file)
+
+tau = np.histogram(tau_samples, bins=np.unique(tau_samples).shape[0])
+indexes_tau = m['freq'].index
+tau = (tau[0], [indexes_tau[int(i)] for i in tau[1]])
+
+m['freq'].index.max()
+
+tau[1]
+
+ m['model']['tau'][0]
+
+[182]
+
+np.mean(tfd.Poisson(rate=5).sample(10000).numpy())
+
+end = m['freq'].index.max()
+
 artificial_timeline(model, freq)
+
+dict
 
 
 
 from scipy.stats import ks_2samp
-def evaluate_changepoint_model(model, freq, n=5):
+def evaluate_changepoint_model(model, freq, n=50):
     all_tests = []
     for fake_timeline in artificial_timeline(model, freq, n):
         all_tests.append(ks_2samp(freq.values, fake_timeline.values))
@@ -68,13 +128,26 @@ def evaluate_changepoint_model(model, freq, n=5):
     return {'statistic': result[0], 'pvalue': result[1]}
 
 
+def evaluate_changepoint_dict(dict_levels, end, freq, n=50):
+    all_tests = []
+    for i in range(n):
+        fake_timeline = artificial_timeline_from_dict_levels(dict_levels, end)
+        all_tests.append(ks_2samp(freq.values, fake_timeline.values))
+    result = np.mean(np.vstack(all_tests), axis=0)
+    return {'statistic': result[0], 'pvalue': result[1]}
+
+
+evaluate_changepoint_model(m['model'], m['freq'], 200)
+
+evaluate_changepoint_dict({pd.Timestamp('2019-09-04').tz_localize('UTC'):6.4, pd.Timestamp('2020-02-22').tz_localize('UTC'):7.5, pd.Timestamp('2020-03-22').tz_localize('UTC'):5.4}, end, m['freq'], 200)
+
 # %timeit evaluate_changepoint_model(model, freq, 15)
 
 evaluate_changepoint_model(model, freq, 50)
 
 all_results = {}
 for i in tqdm.tqdm(os.listdir('./data/models')):
-    with open('./data/models/'+i, 'rb') as f:
+    with open('../data/models/'+i, 'rb') as f:
         model_file = pickle.loads(f.read())
         model, freq = model_file['model'], model_file['freq']
         result = evaluate_changepoint_model(model, freq, 50)
@@ -96,7 +169,7 @@ bad_index = evaluate_df[evaluate_df['pvalue']<=0.2].index
 
 def load_and_plot(i):
     print(i)
-    with open('./data/models/'+i+'.pkl', 'rb') as f:
+    with open('../data/models/'+i+'.pkl', 'rb') as f:
         model_file = pickle.loads(f.read())
         model, freq = model_file['model'], model_file['freq']
         return utils.plot_everything(model, freq, n=4)
@@ -113,22 +186,36 @@ tal.index
 
 len(all_profiles)
 
-len(evaluate_df)
+import os
+tls = os.listdir("../data/models")
 
-all_profiles['pvalue']
+import
 
 # 911220797976580096
-load_and_plot(np.random.choice(alright_index))
+load_and_plot(np.random.choice(tls)[:-4])
+
+fig = load_and_plot('1015264264892960769')
+fig.update_layout(title='user_id=455018574', margin=dict(l=0, r=0, t=40, b=0), height=400)
+utils.plotly_to_tfm(fig, 'real-case-1')
+
+fig = load_and_plot('455018574')
+fig.update_layout(title='Real case scenario', margin=dict(l=0, r=0, t=40, b=0), height=400)
+utils.plotly_to_tfm(fig, 'real-case-1')
+
+import importlib
+importlib.reload(utils)
 
 # lambda_2 te 2 probs
-load_and_plot('112894609')
+fig = load_and_plot('112894609')
+fig.update_layout(title='Multi-λ example', margin=dict(l=0, r=0, t=40, b=0), height=400)
+utils.plotly_to_tfm(fig, 'multi-lambda')
+
+fig = load_and_plot('112894609')
 
 all_profiles.loc[2377330968]
 
-# +
-# april down 810992804977639424
-# -
-
+utils.plotly_to_tfm
+importlib.reload(utils)
 
 
 to_timestamp = np.vectorize(lambda x: (x - datetime.datetime(1970, 1, 1)).total_seconds())

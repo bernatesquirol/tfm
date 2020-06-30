@@ -1,4 +1,6 @@
 import os
+
+
 for i in os.listdir('data/journalists'):
     if os.path.isfile('data/journalists-new/'+i):
         full_timeline = pd.concat([pd.read_pickle('data/journalists-new/'+i),pd.read_pickle('data/journalists/'+i)])
@@ -133,5 +135,171 @@ new_profiles = client.show_users_ids(ids)
 
 import importlib
 importlib.reload(utils)
+
+import os
+tls = os.listdir('../data/timelines')
+
+
+
+def get_tl_ratios(id_t):
+    tl = pd.read_pickle('../data/timelines/{}'.format(id_t))
+    min_obs = pd.Timestamp('2019-09-11 00:00:00+0000', tz='UTC', freq='W-MON')
+    max_obs = tl.index.max()
+    all_zeros_week = pd.Series({min_obs+pd.Timedelta(days=i*7):0 for i in range(int((max_obs-min_obs).days/7))})
+    dict_all = {}
+    tl = tl[tl.type!='Like'].copy()
+    for i, w in enumerate(all_zeros_week.index[1:]):
+        prev_week = all_zeros_week.index[i-1]
+        values = tl[(tl.index>prev_week)&(tl.index<w)].type.value_counts()
+        if len(values)>0:
+            dict_all[w]=values
+    df = pd.DataFrame(dict_all).T
+    if len(df)==0:
+        return pd.DataFrame()
+    df = df.fillna(0)
+    total_sum=df.sum(axis=1)
+    df = df.apply(lambda x: x/total_sum, axis=0)
+    df['total'] = total_sum
+    if 'Mention' in df.columns and 'Text' in df.columns:
+        df['Text']+=df['Mention'].fillna(0)
+    df.total = (df.total-df.total.min())/(df.total.max()-df.total.min())
+    return df
+
+
+from tqdm import tqdm
+
+for tl_id in tqdm(not_done):
+    get_tl_ratios(tl_id).to_pickle('../data/pickles/'+tl_id+'.pkl')
+
+import pickle
+pickle.dump(all_data, open('../data/picklepickle.pkl', 'wb'))
+
+all_data={}
+for 
+
+
+# +
+
+# df.to
+# -
+not_done = [t for t in tls if t[:-4] not in all_data]
+
+len(not_done)
+
+prova = get_tl_ratios(tls[6])
+
+pkl_1 = pd.read_pickle('../data/pickles/'+pkl)
+
+
+
+all_profiles = pd.read_pickle('../data/all_profiles_mod.pkl')
+
+all_profiles[-all_profiles.observed_end.isnull()].observed_end.max()
+
+all_zeros_week.loc[pkl_1.index]+=pkl_1.RT.values
+
+all_profiles.type_profile.unique()
+
+RT_count = RT_count_total.copy()
+
+min_obs = pd.Timestamp('2019-09-11 00:00:00+0000', tz='UTC', freq='W-MON')
+max_obs = pd.Timestamp('2020-05-16 00:00:00+0000', tz='UTC', freq='W-MON')
+# RT_count = pd.Series({min_obs+pd.Timedelta(days=i*7):1 for i in range(int((max_obs-min_obs).days/7))})
+RT_count_total = pd.Series({min_obs+pd.Timedelta(days=i*7):1 for i in range(int((max_obs-min_obs).days/7))})
+# text_count = pd.Series({min_obs+pd.Timedelta(days=i*7):1 for i in range(int((max_obs-min_obs).days/7))})
+# text_count_total = pd.Series({min_obs+pd.Timedelta(days=i*7):1 for i in range(int((max_obs-min_obs).days/7))})
+# total_count = pd.Series({min_obs+pd.Timedelta(days=i*7):1 for i in range(int((max_obs-min_obs).days/7))})
+# total_count_total = pd.Series({min_obs+pd.Timedelta(days=i*7):1 for i in range(int((max_obs-min_obs).days/7))})
+for pkl in os.listdir('../data/pickles'):
+    file = pd.read_pickle('../data/pickles/'+pkl)
+    if 'RT' in file.columns:
+#         RT_count.loc[file.index]+=file['RT']
+        RT_count_total.loc[file.index]+=1
+#     if 'Text' in file.columns:
+#         text_count.loc[file.index]+=file['Text']
+#         text_count_total.loc[file.index]+=1
+#     if 'total' in file.columns:
+#         file = file[-file.total.isnull()]
+#         total_count.loc[file.index]+=file['total']
+#         total_count_total.loc[file.index]+=1
+    else:
+        print(pkl)
+
+RT_count_2 = RT_count/RT_count_total
+text_count_2 = text_count/text_count_total
+total_count_2 = total_count/total_count_total
+
+# +
+# RT_count_total
+# -
+
+import plotly.express as px
+fig = px.bar(x=total_count[2:].index, y=total_count[2:].values/np.hstack([a,[a[-1]]]))
+# total_count.plot()
+
+
+fig = px.bar(x=total_count_2[2:].index, y=total_count_2[2:])
+
+fig
+
+fig.layout['xaxis']['title']['text']='Time'
+fig.layout['yaxis']['title']['text']='Mean tweet distribution'
+
+
+final_bias = np.hstack([a,[a[-1]]])
+
+import utils
+utils.plotly_to_tfm(fig, 'intro-overall-activity-2')
+
+import plotly.graph_objects as go
+
+fig = go.Figure()
+colors = ['#636EFA','#EF553B','#14D09E', '#AB63FA']
+fig.add_trace(go.Scatter(x=total_count_2[2:].index, y=total_count_2[2:].values, name='RT_ratio', marker_color=colors[2]))
+# fig.add_trace(go.Scatter(x=text_count_2[2:].index, y=text_count_2[2:].values, name='text_ratio', marker_color=colors[1]))
+
+utils.plotly_to_tfm(fig, 'intro-overall-ratio-rt')
+
+# for g_id,g in  all_profiles[-all_profiles.dict_levels.isnull()].groupby('type_profile'):
+g = all_profiles[-all_profiles.dict_levels.isnull()]
+starting = g.dict_levels.apply(lambda x: list(x.keys())[0])
+
+
+min_obs = pd.Timestamp('2019-09-02 00:00:00+0000', tz='UTC', freq='W-MON')
+max_obs = pd.Timestamp('2020-05-11 00:00:00+0000', tz='UTC', freq='W-MON')
+all_zeros_week = pd.Series({min_obs+pd.Timedelta(days=i*7):0 for i in range(int((max_obs-min_obs).days/7))})
+
+
+def get_week_oct(date):
+    if date<all_zeros_week.index[0]+pd.Timedelta(days=7):
+        return all_zeros_week.index[0]
+    for d in all_zeros_week.index[1:]:
+        if date<d+pd.Timedelta(days=7):
+            return d
+
+
+tal = starting.apply(get_week_oct).value_counts().sort_index().cumsum()
+
+px.line(y=tal.values, x=tal.index, title='Starting date bias')
+
+for g_id,g in  all_profiles[-all_profiles.dict_levels.isnull()].groupby('type_profile'):
+    starting = g.dict_levels.apply(lambda x: list(x.keys())[0])
+    tal = starting.value_counts().sort_index().cumsum()
+    fig = px.line(y=tal.values, x=tal.index, title='Starting date bias for '+g_id)
+    fig.layout['xaxis']['title']['text']='observed_start date'
+    fig.layout['yaxis']['title']['text']='#users'
+    fig.show()
+
+
+
+
+
+fig = px.line(y=tal.values, x=tal.index, title='Starting date bias')
+
+fig.layout['xaxis']['title']['text']='observed_start date'
+
+fig.layout['yaxis']['title']['text']='#users'
+
+utils.plotly_to_tfm(fig, 'intro-bias')
 
 
